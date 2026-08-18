@@ -7,13 +7,13 @@ export default function Sidebar({
   activeChannelId,
   onSelect,
   profile,
-  onSwitchProfile,
+  onSignOut,
 }: {
   channels: Channel[];
   activeChannelId: string | null;
   onSelect: (channel: Channel) => void;
   profile: Profile;
-  onSwitchProfile: () => void;
+  onSignOut: () => void;
 }) {
   const textChannels = channels.filter((c) => c.type === "text");
   const voiceChannels = channels.filter((c) => c.type === "voice");
@@ -56,11 +56,11 @@ export default function Sidebar({
           <span className="truncate text-sm font-medium">{profile.name}</span>
         </div>
         <button
-          onClick={onSwitchProfile}
-          title="Trocar de perfil"
+          onClick={onSignOut}
+          title="Sair da conta"
           className="shrink-0 rounded px-2 py-1 text-xs text-muted hover:bg-panelLight hover:text-white"
         >
-          Trocar
+          Sair
         </button>
       </div>
     </aside>

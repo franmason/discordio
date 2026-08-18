@@ -1,25 +1,24 @@
-import { Profile } from "@/lib/supabase";
+import { supabase, Profile } from "@/lib/supabase";
 
-const PROFILE_KEY = "dc_profile";
+// A fonte de verdade da sessão é o Supabase Auth (cookie/localStorage
+// gerenciado pelo próprio supabase-js). Aqui só buscamos a linha
+// correspondente em `profiles` pro usuário logado.
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return null;
 
-// Guarda só qual foi o último perfil escolhido nesse navegador, pra
-// pular a tela de seleção da próxima vez. A fonte de verdade continua
-// sendo a tabela `profiles` no Supabase, não o localStorage.
-export function getSavedProfile(): Profile | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(PROFILE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Profile;
-  } catch {
-    return null;
-  }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", session.user.id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as Profile;
 }
 
-export function saveProfile(profile: Profile) {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-}
-
-export function clearProfile() {
-  localStorage.removeItem(PROFILE_KEY);
+export async function signOut() {
+  await supabase.auth.signOut();
 }

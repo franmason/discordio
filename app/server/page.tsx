@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSavedProfile, clearProfile } from "@/lib/session";
+import { getCurrentProfile, signOut } from "@/lib/session";
 import { supabase, Channel, Profile } from "@/lib/supabase";
 import Sidebar from "@/components/Sidebar";
 import ChatChannel from "@/components/ChatChannel";
@@ -15,12 +15,15 @@ export default function ServerPage() {
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
-    const saved = getSavedProfile();
-    if (!saved) {
-      router.push("/");
-      return;
+    async function loadProfile() {
+      const current = await getCurrentProfile();
+      if (!current) {
+        router.push("/");
+        return;
+      }
+      setProfile(current);
     }
-    setProfile(saved);
+    loadProfile();
   }, [router]);
 
   useEffect(() => {
@@ -38,8 +41,8 @@ export default function ServerPage() {
     loadChannels();
   }, []);
 
-  function handleSwitchProfile() {
-    clearProfile();
+  async function handleSignOut() {
+    await signOut();
     router.push("/");
   }
 
@@ -52,7 +55,7 @@ export default function ServerPage() {
         activeChannelId={activeChannel?.id ?? null}
         onSelect={setActiveChannel}
         profile={profile}
-        onSwitchProfile={handleSwitchProfile}
+        onSignOut={handleSignOut}
       />
       <main className="flex-1 bg-panelLight">
         {activeChannel?.type === "text" && (

@@ -3,21 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, Profile } from "@/lib/supabase";
-import { getSavedProfile, saveProfile, clearProfile } from "@/lib/session";
 
-type Mode = "loading" | "picker" | "create";
+type Mode = "loading" | "login" | "signup";
 
 export default function EntryPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("loading");
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  // Campos do formulário de criação
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     init();
@@ -25,37 +25,14 @@ export default function EntryPage() {
   }, []);
 
   async function init() {
-    const saved = getSavedProfile();
-    if (saved) {
-      // Confirma que o perfil ainda existe no banco e traz os dados mais recentes
-      const { data, error: fetchError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", saved.id)
-        .maybeSingle();
-
-      if (!fetchError && data) {
-        saveProfile(data as Profile);
-        router.push("/server");
-        return;
-      }
-      clearProfile();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) {
+      router.push("/server");
+      return;
     }
-    await loadProfiles();
-    setMode("picker");
-  }
-
-  async function loadProfiles() {
-    const { data, error: fetchError } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("name", { ascending: true });
-    if (!fetchError && data) setProfiles(data as Profile[]);
-  }
-
-  function selectProfile(profile: Profile) {
-    saveProfile(profile);
-    router.push("/server");
+    setMode("login");
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -78,24 +55,77 @@ export default function EntryPage() {
     setAvatarPreview(URL.createObjectURL(file));
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length < 2) {
+    setError("");
+    setInfo("");
+    setSubmitting(true);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setSubmitting(false);
+
+    if (signInError) {
+      setError("Email ou senha incorretos.");
+      return;
+    }
+
+    router.push("/server");
+  }
+
+  async function handleSignup(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
       setError("Coloca um nome com pelo menos 2 letras");
       return;
     }
-    if (trimmed.length > 24) {
+    if (trimmedName.length > 24) {
       setError("Nome muito longo (máx. 24 caracteres)");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha precisa ter pelo menos 6 caracteres");
       return;
     }
 
     setSubmitting(true);
-    setError("");
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
+
+    if (signUpError || !signUpData.user) {
+      setSubmitting(false);
+      if (signUpError?.message.includes("already registered")) {
+        setError("Já existe uma conta com esse email.");
+      } else {
+        setError("Não deu pra criar a conta. Tenta de novo.");
+      }
+      return;
+    }
+
+    // Se a confirmação de email estiver ativada no projeto Supabase, ainda
+    // não temos sessão aqui — pede pra pessoa confirmar e depois logar.
+    if (!signUpData.session) {
+      setSubmitting(false);
+      setInfo("Conta criada! Confirma seu email e depois entra por aqui.");
+      setMode("login");
+      return;
+    }
+
+    const userId = signUpData.user.id;
 
     const { data: newProfile, error: insertError } = await supabase
       .from("profiles")
-      .insert({ name: trimmed })
+      .insert({ id: userId, name: trimmedName })
       .select()
       .single();
 
@@ -104,7 +134,7 @@ export default function EntryPage() {
       if (insertError?.code === "23505") {
         setError("Já existe alguém com esse nome. Escolhe outro.");
       } else {
-        setError("Não deu pra criar o perfil. Tenta de novo.");
+        setError("Conta criada, mas não deu pra salvar o perfil.");
       }
       return;
     }
@@ -113,7 +143,7 @@ export default function EntryPage() {
 
     if (avatarFile) {
       const ext = avatarFile.name.split(".").pop() || "jpg";
-      const path = `${finalProfile.id}-${Date.now()}.${ext}`;
+      const path = `${userId}-${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
@@ -127,17 +157,16 @@ export default function EntryPage() {
         const { data: updated } = await supabase
           .from("profiles")
           .update({ avatar_url: publicUrlData.publicUrl })
-          .eq("id", finalProfile.id)
+          .eq("id", userId)
           .select()
           .single();
 
         if (updated) finalProfile = updated as Profile;
       }
-      // Se o upload falhar, segue com o perfil sem foto em vez de travar o cadastro
     }
 
     setSubmitting(false);
-    saveProfile(finalProfile);
+    void finalProfile;
     router.push("/server");
   }
 
@@ -149,18 +178,18 @@ export default function EntryPage() {
     );
   }
 
-  if (mode === "create") {
+  if (mode === "signup") {
     return (
       <main className="flex h-full w-full items-center justify-center bg-base">
         <form
-          onSubmit={handleCreate}
+          onSubmit={handleSignup}
           className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl"
         >
           <h1 className="mb-1 text-xl font-semibold text-white">
-            Criar perfil
+            Criar conta
           </h1>
           <p className="mb-6 text-sm text-muted">
-            Nome e foto ficam salvos pra sempre, em qualquer aparelho.
+            Email, senha e nome. Foto é opcional.
           </p>
 
           <div className="mb-5 flex items-center gap-4">
@@ -194,26 +223,50 @@ export default function EntryPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="ex: Chico"
+            className="mb-4 w-full rounded-md border-none bg-base px-3 py-2.5 text-white outline-none ring-1 ring-transparent focus:ring-accent"
+          />
+
+          <label className="mb-2 block text-xs font-bold uppercase text-muted">
+            Email
+          </label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="voce@email.com"
+            className="mb-4 w-full rounded-md border-none bg-base px-3 py-2.5 text-white outline-none ring-1 ring-transparent focus:ring-accent"
+          />
+
+          <label className="mb-2 block text-xs font-bold uppercase text-muted">
+            Senha
+          </label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="mínimo 6 caracteres"
             className="mb-1 w-full rounded-md border-none bg-base px-3 py-2.5 text-white outline-none ring-1 ring-transparent focus:ring-accent"
           />
-          {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+          {error && <p className="mb-2 mt-2 text-xs text-red-400">{error}</p>}
 
           <button
             type="submit"
             disabled={submitting}
             className="mt-4 w-full rounded-md bg-accent py-2.5 font-medium text-white transition hover:bg-accentHover disabled:opacity-60"
           >
-            {submitting ? "Criando..." : "Criar e entrar"}
+            {submitting ? "Criando..." : "Criar conta e entrar"}
           </button>
           <button
             type="button"
             onClick={() => {
               setError("");
-              setMode("picker");
+              setMode("login");
             }}
             className="mt-2 w-full rounded-md py-2 text-sm text-muted hover:text-white"
           >
-            Voltar
+            Já tenho conta
           </button>
         </form>
       </main>
@@ -222,60 +275,61 @@ export default function EntryPage() {
 
   return (
     <main className="flex h-full w-full items-center justify-center bg-base">
-      <div className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl">
-        <h1 className="mb-1 text-xl font-semibold text-white">
-          Quem é você?
-        </h1>
+      <form
+        onSubmit={handleLogin}
+        className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl"
+      >
+        <h1 className="mb-1 text-xl font-semibold text-white">Entrar</h1>
         <p className="mb-6 text-sm text-muted">
-          Escolhe seu perfil pra entrar na sala.
+          Entra com seu email e senha.
         </p>
 
-        {profiles.length > 0 && (
-          <div className="mb-4 flex max-h-64 flex-col gap-1 overflow-y-auto">
-            {profiles.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => selectProfile(p)}
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-left transition hover:bg-panelLight"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xs font-bold text-white">
-                  {p.avatar_url ? (
-                    <img
-                      src={p.avatar_url}
-                      alt={`Foto de perfil de ${p.name}`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    p.name.slice(0, 2).toUpperCase()
-                  )}
-                </div>
-                <span className="text-sm font-medium text-white">
-                  {p.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+        <label className="mb-2 block text-xs font-bold uppercase text-muted">
+          Email
+        </label>
+        <input
+          autoFocus
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="voce@email.com"
+          className="mb-4 w-full rounded-md border-none bg-base px-3 py-2.5 text-white outline-none ring-1 ring-transparent focus:ring-accent"
+        />
 
-        {profiles.length === 0 && (
-          <p className="mb-4 text-sm text-muted">
-            Ninguém criou um perfil ainda. Seja o primeiro!
-          </p>
-        )}
+        <label className="mb-2 block text-xs font-bold uppercase text-muted">
+          Senha
+        </label>
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="sua senha"
+          className="mb-1 w-full rounded-md border-none bg-base px-3 py-2.5 text-white outline-none ring-1 ring-transparent focus:ring-accent"
+        />
+        {info && <p className="mb-2 mt-2 text-xs text-green-400">{info}</p>}
+        {error && <p className="mb-2 mt-2 text-xs text-red-400">{error}</p>}
 
         <button
+          type="submit"
+          disabled={submitting}
+          className="mt-4 w-full rounded-md bg-accent py-2.5 font-medium text-white transition hover:bg-accentHover disabled:opacity-60"
+        >
+          {submitting ? "Entrando..." : "Entrar"}
+        </button>
+        <button
+          type="button"
           onClick={() => {
             setError("");
-            setName("");
-            setAvatarFile(null);
-            setAvatarPreview(null);
-            setMode("create");
+            setInfo("");
+            setMode("signup");
           }}
-          className="w-full rounded-md bg-accent py-2.5 font-medium text-white transition hover:bg-accentHover"
+          className="mt-2 w-full rounded-md py-2 text-sm text-muted hover:text-white"
         >
-          Criar novo perfil
+          Criar conta nova
         </button>
-      </div>
+      </form>
     </main>
   );
 }
