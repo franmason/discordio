@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, Profile } from "@/lib/supabase";
+import { savePendingProfileName } from "@/lib/session";
 
 type Mode = "loading" | "login" | "signup";
 
@@ -89,7 +90,11 @@ export default function EntryPage() {
 
     if (signInError) {
       console.error("Erro de login:", signInError.message);
-      setError("Email ou senha incorretos.");
+      if (signInError.message.includes("Email not confirmed")) {
+        setError("Confirma seu email antes de entrar (checa sua caixa de entrada).");
+      } else {
+        setError("Email ou senha incorretos.");
+      }
       return;
     }
 
@@ -134,7 +139,10 @@ export default function EntryPage() {
 
     // Se a confirmação de email estiver ativada no projeto Supabase, ainda
     // não temos sessão aqui — pede pra pessoa confirmar e depois logar.
+    // Guarda o nome escolhido pra usar quando ela entrar de verdade, pra
+    // não perder e cair no nome aleatório de fallback.
     if (!signUpData.session) {
+      savePendingProfileName(email.trim(), trimmedName);
       setSubmitting(false);
       setInfo("Conta criada! Confirma seu email e depois entra por aqui.");
       setMode("login");

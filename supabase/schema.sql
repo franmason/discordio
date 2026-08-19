@@ -31,12 +31,14 @@ create table messages (
   author_avatar_url text,
   content text not null,
   image_url text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  edited_at timestamptz
 );
 
--- Se você já tinha rodado esse schema antes (tabela já existia sem essa
--- coluna), essa linha garante que ela seja adicionada sem apagar nada:
+-- Se você já tinha rodado esse schema antes (tabela já existia sem essas
+-- colunas), essas linhas garantem que sejam adicionadas sem apagar nada:
 alter table messages add column if not exists image_url text;
+alter table messages add column if not exists edited_at timestamptz;
 
 create index if not exists messages_channel_created_idx
   on messages (channel_id, created_at);
@@ -44,8 +46,7 @@ create index if not exists messages_channel_created_idx
 -- Canais fixos do servidor (MVP: um servidor só)
 insert into channels (name, type, position) values
   ('geral', 'text', 1),
-  ('off-topic', 'text', 2),
-  ('Sala de Voz 1', 'voice', 3)
+  ('Sala de Voz 1', 'voice', 2)
 on conflict (name) do nothing;
 
 alter table profiles enable row level security;
@@ -80,8 +81,33 @@ create policy "messages_select_all" on messages
 create policy "messages_insert_own" on messages
   for insert with check (auth.uid() = author_id);
 
--- Habilita realtime na tabela de mensagens
-alter publication supabase_realtime add table messages;
+-- Cada um só edita/apaga a própria mensagem
+drop policy if exists "messages_update_own" on messages;
+create policy "messages_update_own" on messages
+  for update using (auth.uid() = author_id) with check (auth.uid() = author_id);
+
+drop policy if exists "messages_delete_own" on messages;
+create policy "messages_delete_own" on messages
+  for delete using (auth.uid() = author_id);
+
+-- Habilita realtime nas tabelas de mensagens e perfis (perfis pra quando
+-- alguém troca nome/foto, refletir na hora pra quem já está com o chat aberto).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table messages;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'profiles'
+  ) then
+    alter publication supabase_realtime add table profiles;
+  end if;
+end $$;
 
 -- Bucket de storage pras fotos de perfil (público pra leitura)
 insert into storage.buckets (id, name, public)

@@ -39,16 +39,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const audioTrack = p.tracks.find((t) => t.type === 1 /* AUDIO */);
+      // TrackSource: CAMERA = 1, SCREEN_SHARE = 3 (protocolo do LiveKit).
+      const cameraTrack = p.tracks.find((t) => t.source === 1);
+      const screenShareTrack = p.tracks.find((t) => t.source === 3);
 
       return {
         identity: p.identity,
         name: p.name || p.identity,
         avatarUrl,
-        // Sem publicar áudio ainda = mic desligado/não conectado.
-        // Publicando mas com "muted: true" = mutado manualmente.
-        hasAudio: Boolean(audioTrack),
-        muted: audioTrack ? audioTrack.muted : true,
+        hasCamera: Boolean(cameraTrack) && !cameraTrack?.muted,
+        hasScreenShare: Boolean(screenShareTrack) && !screenShareTrack?.muted,
       };
     });
 

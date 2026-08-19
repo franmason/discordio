@@ -1,5 +1,40 @@
 import { supabase, Profile } from "@/lib/supabase";
 
+const PENDING_NAME_KEY = "pending_profile_names";
+
+// Guarda o nome escolhido no cadastro pra quando o Supabase exige
+// confirmação de email (não dá pra criar o perfil de cara, ainda não tem
+// sessão). Assim que a pessoa confirmar e logar, usamos esse nome em vez
+// de cair no fallback aleatório.
+export function savePendingProfileName(email: string, name: string) {
+  try {
+    const raw = localStorage.getItem(PENDING_NAME_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[email.toLowerCase()] = name;
+    localStorage.setItem(PENDING_NAME_KEY, JSON.stringify(map));
+  } catch {
+    // localStorage indisponível (modo privado etc.) — sem problema,
+    // só cai no fallback normal depois.
+  }
+}
+
+function takePendingProfileName(email: string | undefined): string | null {
+  if (!email) return null;
+  try {
+    const raw = localStorage.getItem(PENDING_NAME_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    const key = email.toLowerCase();
+    const name = map[key];
+    if (!name) return null;
+    delete map[key];
+    localStorage.setItem(PENDING_NAME_KEY, JSON.stringify(map));
+    return name;
+  } catch {
+    return null;
+  }
+}
+
 // A fonte de verdade da sessão é o Supabase Auth (cookie/localStorage
 // gerenciado pelo próprio supabase-js). Aqui só buscamos a linha
 // correspondente em `profiles` pro usuário logado.
@@ -22,13 +57,15 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
   if (data) return data as Profile;
 
-  // Sessão existe mas o perfil nunca foi criado (ex: cadastro que falhou
-  // no passo de inserir em `profiles`). Cria um perfil básico agora pra
-  // não deixar o usuário preso num loop de redirecionamento.
+  // Sessão existe mas o perfil nunca foi criado — normalmente porque o
+  // cadastro exigiu confirmação de email. Usa o nome escolhido no cadastro
+  // se ainda tivermos ele guardado; só cai no nome aleatório se não achar.
+  const pendingName = takePendingProfileName(session.user.email);
   const fallbackName =
+    pendingName ||
     (session.user.email?.split("@")[0] || "usuario").slice(0, 24) +
-    "-" +
-    session.user.id.slice(0, 4);
+      "-" +
+      session.user.id.slice(0, 4);
 
   const { data: created, error: createError } = await supabase
     .from("profiles")

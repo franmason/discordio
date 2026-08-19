@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Channel, Profile } from "@/lib/supabase";
 import { useVoiceParticipants } from "@/lib/useVoiceParticipants";
 
@@ -9,12 +10,18 @@ export default function Sidebar({
   onSelect,
   profile,
   onSignOut,
+  voiceConnected,
+  voiceChannelName,
+  onOpenProfile,
 }: {
   channels: Channel[];
   activeChannelId: string | null;
   onSelect: (channel: Channel) => void;
   profile: Profile;
   onSignOut: () => void;
+  voiceConnected?: boolean;
+  voiceChannelName?: string | null;
+  onOpenProfile?: () => void;
 }) {
   const textChannels = channels.filter((c) => c.type === "text");
   const voiceChannels = channels.filter((c) => c.type === "voice");
@@ -31,7 +38,7 @@ export default function Sidebar({
             <ChannelItem
               key={c.id}
               label={c.name}
-              icon="#"
+              icon={<HashIcon />}
               active={c.id === activeChannelId}
               onClick={() => onSelect(c)}
             />
@@ -43,7 +50,7 @@ export default function Sidebar({
             <div key={c.id}>
               <ChannelItem
                 label={c.name}
-                icon="🔊"
+                icon={<SpeakerIcon />}
                 active={c.id === activeChannelId}
                 onClick={() => onSelect(c)}
               />
@@ -53,11 +60,41 @@ export default function Sidebar({
         </ChannelGroup>
       </div>
 
-      <div className="flex items-center justify-between border-t border-black/20 px-3 py-2">
-        <div className="flex items-center gap-2 overflow-hidden">
+      {voiceConnected && (
+        <div className="border-t border-black/20 bg-[#232428] px-2 pb-2 pt-2">
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-xs font-semibold text-green-400">
+                Conectado por voz
+              </p>
+              {voiceChannelName && (
+                <p className="truncate text-[11px] text-muted">
+                  {voiceChannelName}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div
+            id="voice-control-slot"
+            className="flex items-center justify-center gap-1.5 rounded-md bg-black/20 px-2 py-1.5"
+          />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-1 border-t border-black/20 px-1.5 py-1.5">
+        <button
+          onClick={onOpenProfile}
+          title="Editar perfil"
+          className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md px-1.5 py-1.5 text-left transition hover:bg-panelLight"
+        >
           <Avatar profile={profile} size={32} />
           <span className="truncate text-sm font-medium">{profile.name}</span>
-        </div>
+        </button>
         <button
           onClick={onSignOut}
           title="Sair da conta"
@@ -120,18 +157,19 @@ function VoiceParticipantList({ roomId }: { roomId: string }) {
             )}
           </div>
           <span className="truncate">{p.name}</span>
-          {!p.hasAudio ? (
-            <MicOffIcon className="ml-auto shrink-0 text-red-400" />
-          ) : p.muted ? (
-            <MicOffIcon className="ml-auto shrink-0 text-muted" />
-          ) : null}
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            {p.hasScreenShare && (
+              <ScreenShareIcon className="text-green-400" />
+            )}
+            {p.hasCamera && <CameraIcon className="text-green-400" />}
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-function MicOffIcon({ className }: { className?: string }) {
+function CameraIcon({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -144,11 +182,28 @@ function MicOffIcon({ className }: { className?: string }) {
       strokeLinejoin="round"
       className={className}
     >
-      <line x1="1" y1="1" x2="23" y2="23" />
-      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-      <path d="M17 16.95A7 7 0 0 1 5 12v-2M19 10v2a7 7 0 0 1-.11 1.23" />
-      <line x1="12" y1="19" x2="12" y2="23" />
-      <line x1="8" y1="23" x2="16" y2="23" />
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
+  );
+}
+
+function ScreenShareIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
     </svg>
   );
 }
@@ -177,7 +232,7 @@ function ChannelItem({
   onClick,
 }: {
   label: string;
-  icon: string;
+  icon: ReactNode;
   active: boolean;
   onClick: () => void;
 }) {
@@ -190,8 +245,29 @@ function ChannelItem({
           : "text-muted hover:bg-panelLight/60 hover:text-white"
       }`}
     >
-      <span className="w-4 text-center">{icon}</span>
+      <span className="flex w-4 shrink-0 items-center justify-center">{icon}</span>
       <span className="truncate">{label}</span>
     </button>
+  );
+}
+
+function HashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="9" x2="20" y2="9" />
+      <line x1="4" y1="15" x2="20" y2="15" />
+      <line x1="10" y1="3" x2="8" y2="21" />
+      <line x1="16" y1="3" x2="14" y2="21" />
+    </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M18.36 5.64a9 9 0 0 1 0 12.72" />
+    </svg>
   );
 }

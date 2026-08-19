@@ -73,7 +73,7 @@ export default function GifPicker({
   }
 
   return (
-    <div className="flex h-80 w-80 flex-col rounded-lg bg-panel p-3 shadow-xl ring-1 ring-black/30">
+    <div className="flex h-[26rem] w-96 flex-col rounded-lg bg-panel p-3 shadow-xl ring-1 ring-black/30">
       <input
         autoFocus
         value={query}
@@ -81,23 +81,25 @@ export default function GifPicker({
         placeholder="Buscar GIF..."
         className="mb-2 w-full rounded bg-panelLight px-3 py-2 text-sm text-white outline-none placeholder:text-muted"
       />
-      <div className="grid flex-1 grid-cols-2 gap-1.5 overflow-y-auto">
-        {loading && (
-          <div className="col-span-2 py-6 text-center text-xs text-muted">
-            Carregando...
-          </div>
-        )}
+      <div className="grid flex-1 auto-rows-[7.5rem] grid-cols-2 gap-2 overflow-y-auto pr-1">
+        {loading &&
+          Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-lg bg-panelLight"
+            />
+          ))}
         {!loading &&
           results.map((gif) => (
             <button
               key={gif.id}
               onClick={() => onSelect(gif.images.original.url)}
-              className="overflow-hidden rounded ring-0 transition hover:ring-2 hover:ring-accent"
+              className="group overflow-hidden rounded-lg bg-panelLight ring-0 transition hover:ring-2 hover:ring-accent"
             >
               <img
                 src={gif.images.fixed_width.url}
                 alt="GIF"
-                className="h-24 w-full object-cover"
+                className="h-full w-full object-cover transition group-hover:scale-105"
               />
             </button>
           ))}

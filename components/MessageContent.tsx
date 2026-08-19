@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 const YOUTUBE_RE =
   /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/i;
 
@@ -31,6 +35,7 @@ export default function MessageContent({
   imageUrl?: string | null;
 }) {
   const youtubeMatch = content.match(YOUTUBE_RE);
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="max-w-md">
@@ -53,14 +58,33 @@ export default function MessageContent({
       )}
 
       {imageUrl && (
-        <a href={imageUrl} target="_blank" rel="noopener noreferrer">
-          <img
-            src={imageUrl}
-            alt="Imagem enviada no chat"
-            className="mt-2 max-h-80 max-w-sm rounded-lg object-contain"
-            loading="lazy"
-          />
-        </a>
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="mt-2 block cursor-zoom-in"
+          >
+            <img
+              src={imageUrl}
+              alt="Imagem enviada no chat"
+              className="max-h-80 max-w-sm rounded-lg object-contain"
+              loading="lazy"
+            />
+          </button>
+
+          {expanded && (
+            <div
+              onClick={() => setExpanded(false)}
+              className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-4"
+            >
+              <img
+                src={imageUrl}
+                alt="Imagem enviada no chat (ampliada)"
+                className="max-h-full max-w-full rounded-lg object-contain"
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

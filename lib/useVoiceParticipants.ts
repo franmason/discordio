@@ -6,8 +6,8 @@ export type VoiceParticipant = {
   identity: string;
   name: string;
   avatarUrl: string | null;
-  hasAudio: boolean;
-  muted: boolean;
+  hasCamera: boolean;
+  hasScreenShare: boolean;
 };
 
 // Fica de olho em quem está em cada canal de voz, pra mostrar a listinha

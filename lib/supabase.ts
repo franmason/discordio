@@ -41,4 +41,5 @@ export type Message = {
   content: string;
   image_url: string | null;
   created_at: string;
+  edited_at: string | null;
 };

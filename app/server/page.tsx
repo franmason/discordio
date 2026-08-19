@@ -7,12 +7,14 @@ import { supabase, Channel, Profile } from "@/lib/supabase";
 import Sidebar from "@/components/Sidebar";
 import ChatChannel from "@/components/ChatChannel";
 import VoiceChannel from "@/components/VoiceChannel";
+import ProfileSettingsModal from "@/components/ProfileSettingsModal";
 
 export default function ServerPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -56,6 +58,9 @@ export default function ServerPage() {
         onSelect={setActiveChannel}
         profile={profile}
         onSignOut={handleSignOut}
+        voiceConnected={activeChannel?.type === "voice"}
+        voiceChannelName={activeChannel?.type === "voice" ? activeChannel.name : null}
+        onOpenProfile={() => setEditingProfile(true)}
       />
       <main className="flex-1 bg-panelLight">
         {activeChannel?.type === "text" && (
@@ -74,6 +79,14 @@ export default function ServerPage() {
           </div>
         )}
       </main>
+
+      {editingProfile && (
+        <ProfileSettingsModal
+          profile={profile}
+          onClose={() => setEditingProfile(false)}
+          onSaved={setProfile}
+        />
+      )}
     </div>
   );
 }
