@@ -62,7 +62,11 @@ export default function ServerPage() {
           <ChatChannel channel={activeChannel} profile={profile} />
         )}
         {activeChannel?.type === "voice" && (
-          <VoiceChannel channel={activeChannel} profile={profile} />
+          <VoiceChannel
+            channel={activeChannel}
+            profile={profile}
+            onLeave={() => setActiveChannel(null)}
+          />
         )}
         {!activeChannel && (
           <div className="flex h-full items-center justify-center text-muted">

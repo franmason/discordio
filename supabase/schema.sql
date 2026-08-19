@@ -30,8 +30,13 @@ create table messages (
   author_name text not null,
   author_avatar_url text,
   content text not null,
+  image_url text,
   created_at timestamptz not null default now()
 );
+
+-- Se você já tinha rodado esse schema antes (tabela já existia sem essa
+-- coluna), essa linha garante que ela seja adicionada sem apagar nada:
+alter table messages add column if not exists image_url text;
 
 create index if not exists messages_channel_created_idx
   on messages (channel_id, created_at);
@@ -49,6 +54,13 @@ alter table messages enable row level security;
 
 -- Qualquer logado pode ver todos os perfis (pra mostrar nome/foto no chat),
 -- mas só pode criar/editar o próprio perfil (id = seu auth.uid()).
+drop policy if exists "profiles_select_all" on profiles;
+drop policy if exists "profiles_insert_own" on profiles;
+drop policy if exists "profiles_update_own" on profiles;
+drop policy if exists "channels_select_all" on channels;
+drop policy if exists "messages_select_all" on messages;
+drop policy if exists "messages_insert_own" on messages;
+
 create policy "profiles_select_all" on profiles
   for select using (true);
 
@@ -85,3 +97,18 @@ create policy "avatars_public_read" on storage.objects
 -- Só logado pode subir foto
 create policy "avatars_authenticated_upload" on storage.objects
   for insert with check (bucket_id = 'avatars' and auth.role() = 'authenticated');
+
+-- Bucket de storage pras imagens do chat (prints, fotos coladas etc.)
+insert into storage.buckets (id, name, public)
+values ('chat-uploads', 'chat-uploads', true)
+on conflict (id) do nothing;
+
+drop policy if exists "chat_uploads_public_read" on storage.objects;
+drop policy if exists "chat_uploads_authenticated_upload" on storage.objects;
+
+create policy "chat_uploads_public_read" on storage.objects
+  for select using (bucket_id = 'chat-uploads');
+
+-- Só logado pode subir imagem no chat
+create policy "chat_uploads_authenticated_upload" on storage.objects
+  for insert with check (bucket_id = 'chat-uploads' and auth.role() = 'authenticated');

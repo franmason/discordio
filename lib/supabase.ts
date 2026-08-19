@@ -1,9 +1,22 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Em dev, o Fast Refresh recarrega este módulo várias vezes. Sem isso,
+// cada recarga cria um novo GoTrueClient que disputa o mesmo lock de auth
+// no navegador (navigator.locks), travando getSession() pra sempre.
+// Guardamos a instância no globalThis pra sobreviver ao HMR.
+const globalForSupabase = globalThis as unknown as {
+  supabase?: SupabaseClient;
+};
+
+export const supabase =
+  globalForSupabase.supabase ?? createClient(supabaseUrl, supabaseAnonKey);
+
+if (process.env.NODE_ENV !== "production") {
+  globalForSupabase.supabase = supabase;
+}
 
 export type Profile = {
   id: string;
@@ -26,5 +39,6 @@ export type Message = {
   author_name: string;
   author_avatar_url: string | null;
   content: string;
+  image_url: string | null;
   created_at: string;
 };

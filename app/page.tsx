@@ -25,12 +25,31 @@ export default function EntryPage() {
   }, []);
 
   async function init() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      router.push("/server");
-      return;
+    console.log("[init] iniciando verificação de sessão...");
+    try {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("getSession demorou demais (timeout)")), 8000)
+      );
+      const {
+        data: { session },
+        error: sessionError,
+      } = await Promise.race([supabase.auth.getSession(), timeout]);
+      console.log("[init] getSession retornou", { session, sessionError });
+
+      if (sessionError) {
+        console.error("Erro ao recuperar sessão:", sessionError.message);
+        await supabase.auth.signOut();
+        setMode("login");
+        return;
+      }
+
+      if (session) {
+        router.push("/server");
+        return;
+      }
+    } catch (err) {
+      console.error("Falha ao inicializar sessão:", err);
+      await supabase.auth.signOut();
     }
     setMode("login");
   }
@@ -69,6 +88,7 @@ export default function EntryPage() {
     setSubmitting(false);
 
     if (signInError) {
+      console.error("Erro de login:", signInError.message);
       setError("Email ou senha incorretos.");
       return;
     }
