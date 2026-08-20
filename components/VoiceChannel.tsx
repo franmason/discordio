@@ -108,6 +108,16 @@ const RESOLUTIONS = {
 type ResolutionKey = keyof typeof RESOLUTIONS;
 type FpsKey = 30 | 60;
 
+// O LiveKit, se não recebe um `screenShareEncoding` explícito, usa um
+// preset padrão de 1080p a 15fps/2.5Mbps pra QUALQUER compartilhamento de
+// tela — mesmo que a captura peça 1440p/60fps. É isso que fazia parecer
+// lagado pra quem assiste: o vídeo real ia a 15fps sempre.
+const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
+  "720p": { 30: 2_500_000, 60: 4_000_000 },
+  "1080p": { 30: 4_000_000, 60: 6_000_000 },
+  "1440p": { 30: 6_000_000, 60: 9_000_000 },
+};
+
 function RoomHall({ channelName }: { channelName: string }) {
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
@@ -408,7 +418,21 @@ function VoiceControlBar({
           resolution: { ...RESOLUTIONS[resolution], frameRate: fps },
           contentHint: "motion",
         },
-        { videoCodec: "vp8", simulcast: false }
+        {
+          videoCodec: "vp8",
+          simulcast: false,
+          // Padrão do LiveKit pra screen share é 'maintain-resolution' (mantém
+          // nitidez, descarta frames se a rede apertar). Aqui queremos o
+          // oposto: fluidez antes de nitidez.
+          degradationPreference: "maintain-framerate",
+          screenShareEncoding: {
+            maxBitrate: SCREEN_SHARE_BITRATE[resolution][fps],
+            maxFramerate: fps,
+            // Garante que a tela compartilhada não perca banda pra webcams
+            // quando a conexão de quem compartilha estiver apertada.
+            priority: "high",
+          },
+        }
       );
       setShareMenuOpen(false);
     } catch {
