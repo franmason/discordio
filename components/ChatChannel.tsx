@@ -11,9 +11,11 @@ import ConfirmDialog, { DialogState } from "@/components/ConfirmDialog";
 export default function ChatChannel({
   channel,
   profile,
+  onClose,
 }: {
   channel: Channel;
   profile: Profile;
+  onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
@@ -257,13 +259,30 @@ export default function ChatChannel({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full w-full flex-col">
       <ConfirmDialog state={dialog} onClose={() => setDialog(null)} />
-      <div className="flex h-12 items-center border-b border-gold/20 px-4 font-display text-lg uppercase tracking-wider shadow-sm">
-        # {channel.name}
+      <div className="flex h-14 items-center gap-2 border-b border-white/5 px-4 shadow-sm md:h-16">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+            Bastidores
+          </p>
+          <p className="truncate font-display text-lg uppercase tracking-wider text-white">
+            {channel.name}
+          </p>
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            title="Fechar"
+            className="shrink-0 rounded-md p-2 text-muted hover:bg-white/5 hover:text-white"
+          >
+            <CloseIcon />
+          </button>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
         {messages.map((m) => {
           const currentAuthor = m.author_id ? profilesById[m.author_id] : null;
           const displayName = currentAuthor?.name ?? m.author_name;
@@ -277,7 +296,7 @@ export default function ChatChannel({
           return (
             <div
               key={m.id}
-              className="group mb-3 flex gap-3 rounded px-2 py-1 -mx-2 hover:bg-black/10"
+              className="group relative mb-3 flex gap-3 rounded px-2 py-1 -mx-2 hover:bg-black/10"
             >
               <div className="mt-0.5">
                 <Avatar
@@ -345,7 +364,7 @@ export default function ChatChannel({
               </div>
 
               {isOwn && !isEditing && (
-                <div className="hidden shrink-0 items-start gap-1 group-hover:flex">
+                <div className="absolute right-2 top-1 hidden items-start gap-1 rounded bg-panelLight/90 shadow-sm group-hover:flex">
                   {!m.image_url && (
                     <button
                       type="button"
@@ -444,6 +463,15 @@ export default function ChatChannel({
         </div>
       </form>
     </div>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
   );
 }
 

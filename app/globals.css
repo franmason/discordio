@@ -12,6 +12,15 @@ body {
   overflow: hidden;
 }
 
+.cam-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.cam-strip::-webkit-scrollbar {
+  display: none;
+}
+
 .bg-base {
   background-image:
     radial-gradient(ellipse 80% 55% at 50% -10%, rgba(179, 36, 44, 0.12), transparent 60%),
@@ -87,6 +96,33 @@ body {
     opacity: 1;
   }
   100% {
+    opacity: 0;
+  }
+}
+
+.reaction-float {
+  animation: reaction-float 3s cubic-bezier(0.2, 0.7, 0.4, 1) forwards;
+}
+
+@keyframes reaction-float {
+  0% {
+    transform: translate(calc(-50% + var(--reaction-drift-start)), 0) scale(0.4);
+    opacity: 0;
+  }
+  12% {
+    transform: translate(calc(-50% + var(--reaction-drift-mid)), -12vh) scale(1.15);
+    opacity: 1;
+  }
+  25% {
+    transform: translate(calc(-50% + var(--reaction-drift-mid)), -25vh) scale(1);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(calc(-50% + var(--reaction-drift-end)), -80vh) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--reaction-drift-end)), -92vh) scale(0.9);
     opacity: 0;
   }
 }

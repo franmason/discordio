@@ -38,7 +38,7 @@ export default function MessageContent({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="max-w-md">
+    <div className="max-w-full">
       {content && (
         <p className="whitespace-pre-wrap break-words text-sm text-gray-100">
           {linkify(content)}
@@ -46,7 +46,7 @@ export default function MessageContent({
       )}
 
       {youtubeMatch && (
-        <div className="mt-2 aspect-video w-full max-w-sm overflow-hidden rounded-lg">
+        <div className="mt-2 aspect-video w-full max-w-full overflow-hidden rounded-lg sm:max-w-sm">
           <iframe
             className="h-full w-full"
             src={`https://www.youtube.com/embed/${youtubeMatch[1]}`}
@@ -67,7 +67,7 @@ export default function MessageContent({
             <img
               src={imageUrl}
               alt="Imagem enviada no chat"
-              className="max-h-80 max-w-sm rounded-lg object-contain"
+              className="max-h-80 w-auto max-w-full rounded-lg object-contain"
               loading="lazy"
             />
           </button>

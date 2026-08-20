@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ScreenSharePresets, Track } from "livekit-client";
-import type { Participant, VideoPreset } from "livekit-client";
+import { Track } from "livekit-client";
+import type { Participant } from "livekit-client";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -13,23 +13,42 @@ import {
   useParticipants,
   useLocalParticipant,
   useTracks,
+  useDataChannel,
 } from "@livekit/components-react";
 import type { TrackReference } from "@livekit/components-react";
 import { Channel, Profile } from "@/lib/supabase";
+import { useVoiceParticipants } from "@/lib/useVoiceParticipants";
+import ChatChannel from "@/components/ChatChannel";
 
 export default function VoiceChannel({
   channel,
   profile,
-  onLeave,
+  minimized = false,
+  onExpand,
+  chatChannel = null,
+  onStageChatOpen,
 }: {
   channel: Channel;
   profile: Profile;
-  onLeave?: () => void;
+  minimized?: boolean;
+  onExpand?: () => void;
+  chatChannel?: Channel | null;
+  onStageChatOpen?: () => void;
 }) {
+  const [joined, setJoined] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const participants = useVoiceParticipants(channel.id);
+
+  // Trocou de sala: volta pro saguão em vez de continuar conectado na antiga.
+  useEffect(() => {
+    setJoined(false);
+    setToken(null);
+    setError(null);
+  }, [channel.id]);
 
   useEffect(() => {
+    if (!joined) return;
     let active = true;
     setToken(null);
     setError(null);
@@ -55,46 +74,137 @@ export default function VoiceChannel({
     return () => {
       active = false;
     };
-  }, [channel.id, profile.id, profile.name, profile.avatar_url]);
+  }, [joined, channel.id, profile.id, profile.name, profile.avatar_url]);
 
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL!;
 
+  if (!joined) {
+    return (
+      <VoiceLobby
+        channelName={channel.name}
+        participants={participants}
+        onJoin={() => setJoined(true)}
+      />
+    );
+  }
+
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-red-400">
-        Erro ao conectar na sala de voz: {error}
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-red-400">
+        Erro ao conectar na sala: {error}
+        <button
+          type="button"
+          onClick={() => setJoined(false)}
+          className="rounded-lg bg-white/5 px-4 py-2 text-xs font-medium text-white transition hover:bg-white/10"
+        >
+          Voltar
+        </button>
       </div>
     );
   }
 
   if (!token) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted">
-        <SpeakerIcon /> Conectando em {channel.name}...
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
+        Preparando a sala {channel.name}...
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-12 items-center gap-2 border-b border-gold/20 px-4 font-display text-lg uppercase tracking-wider shadow-sm">
-        <SpeakerIcon /> {channel.name}
+    <LiveKitRoom
+      key={channel.id}
+      token={token}
+      serverUrl={livekitUrl}
+      connect={true}
+      video={false}
+      audio={false}
+      options={{ adaptiveStream: true, dynacast: true }}
+      style={{ height: "100%" }}
+      className="flex h-full flex-col overflow-hidden"
+      onDisconnected={() => setJoined(false)}
+    >
+      <RoomHall
+        channelName={channel.name}
+        minimized={minimized}
+        onExpand={onExpand}
+        profile={profile}
+        chatChannel={chatChannel}
+        onStageChatOpen={onStageChatOpen}
+      />
+    </LiveKitRoom>
+  );
+}
+
+// Saguão: fica aqui até clicar em "Entrar" — só depois disso a gente
+// pede token e conecta no LiveKit (não entra na call sozinho).
+function VoiceLobby({
+  channelName,
+  participants,
+  onJoin,
+}: {
+  channelName: string;
+  participants: ReturnType<typeof useVoiceParticipants>;
+  onJoin: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-6 bg-gradient-to-b from-panel/60 to-black p-8 text-center">
+      <div>
+        <p className="mb-1 font-display text-sm uppercase tracking-[0.3em] text-muted">
+          {participants.length > 0 ? "Sessão em andamento" : "Sala fechada"}
+        </p>
+        <p className="text-xs text-muted">
+          {participants.length > 0
+            ? `${participants.length} ${
+                participants.length === 1 ? "pessoa" : "pessoas"
+              } na sala ${channelName}`
+            : `Ninguém na sala ${channelName} ainda`}
+        </p>
       </div>
-      <LiveKitRoom
-        key={channel.id}
-        token={token}
-        serverUrl={livekitUrl}
-        connect={true}
-        video={false}
-        audio={false}
-        options={{ adaptiveStream: true, dynacast: true }}
-        style={{ height: "100%" }}
-        className="flex flex-1 flex-col overflow-hidden"
-        onDisconnected={() => onLeave?.()}
+
+      {participants.length > 0 && (
+        <div className="flex flex-wrap items-start justify-center gap-8">
+          {participants.map((p) => (
+            <div key={p.identity} className="flex w-24 flex-col items-center gap-2">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-white ring-2 ring-white/10">
+                {p.avatarUrl ? (
+                  <img
+                    src={p.avatarUrl}
+                    alt={`Foto de perfil de ${p.name}`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  p.name.slice(0, 2).toUpperCase()
+                )}
+              </div>
+              <span className="max-w-full truncate text-sm text-white">
+                {p.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onJoin}
+        className="flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-accentHover"
       >
-        <RoomHall channelName={channel.name} />
-      </LiveKitRoom>
+        <EnterIcon />
+        Entrar no canal de voz
+      </button>
     </div>
+  );
+}
+
+function EnterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <polyline points="10 17 15 12 10 7" />
+      <line x1="15" y1="12" x2="3" y2="12" />
+    </svg>
   );
 }
 
@@ -108,64 +218,90 @@ const RESOLUTIONS = {
 type ResolutionKey = keyof typeof RESOLUTIONS;
 type FpsKey = 30 | 60;
 
-// O LiveKit, se não recebe um `screenShareEncoding` explícito, usa um
-// preset padrão de 1080p a 15fps/2.5Mbps pra QUALQUER compartilhamento de
-// tela — mesmo que a captura peça 1440p/60fps. É isso que fazia parecer
-// lagado pra quem assiste: o vídeo real ia a 15fps sempre.
-const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
-  "720p": { 30: 2_500_000, 60: 4_000_000 },
-  "1080p": { 30: 4_000_000, 60: 6_000_000 },
-  "1440p": { 30: 6_000_000, 60: 9_000_000 },
-};
-
-// Camadas extras (mais leves) publicadas junto com a camada principal, uma
-// por resolução escolhida — sempre estritamente menores que o "topo" pra
-// não duplicar resolução com ele. O SFU entrega a cada espectador a camada
-// que a conexão dele aguenta, em vez de forçar o stream pesado pra todo
-// mundo. Ambas ficam em 15fps de propósito: pra quem tem net ruim, é
-// melhor uma imagem estável em fps baixo do que travando tentando
-// acompanhar 30/60fps.
-const SCREEN_SHARE_FALLBACK_LAYERS: Record<ResolutionKey, VideoPreset[]> = {
-  "720p": [ScreenSharePresets.h360fps15],
-  "1080p": [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps15],
-  "1440p": [ScreenSharePresets.h360fps15, ScreenSharePresets.h1080fps15],
-};
-
-function RoomHall({ channelName }: { channelName: string }) {
+function RoomHall({
+  channelName,
+  minimized,
+  onExpand,
+  profile,
+  chatChannel,
+  onStageChatOpen,
+}: {
+  channelName: string;
+  minimized: boolean;
+  onExpand?: () => void;
+  profile: Profile;
+  chatChannel: Channel | null;
+  onStageChatOpen?: () => void;
+}) {
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [resolution, setResolution] = useState<ResolutionKey>("1080p");
   const [fps, setFps] = useState<FpsKey>(30);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageFullscreen, setStageFullscreen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [stageChatOpen, setStageChatOpen] = useState(false);
+  const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  return (
-    <>
-      <RoomAudioRenderer volume={muted ? 0 : volume} />
-      <VoiceStage channelName={channelName} />
-      <VoiceControlBar
-        volume={volume}
-        muted={muted}
-        onVolumeChange={setVolume}
-        onToggleMuted={() => setMuted((m) => !m)}
-        resolution={resolution}
-        fps={fps}
-        onResolutionChange={setResolution}
-        onFpsChange={setFps}
-      />
-    </>
-  );
-}
+  useEffect(() => {
+    function onChange() {
+      setStageFullscreen(document.fullscreenElement === stageRef.current);
+    }
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
-function VoiceStage({ channelName }: { channelName: string }) {
-  const participants = useParticipants();
+  // Fora da tela cheia já tem o botão "Bastidores" da página — esse painel
+  // aqui dentro só faz sentido enquanto o vídeo toma a tela toda.
+  useEffect(() => {
+    if (!stageFullscreen) setStageChatOpen(false);
+  }, [stageFullscreen]);
+
+  function toggleStageFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      stageRef.current?.requestFullscreen();
+    }
+  }
+
+  // Os controles sobre o vídeo (sair da tela cheia, "parar de assistir")
+  // somem sozinhos depois de um tempo parado e voltam assim que o mouse
+  // se mexe — igual player de vídeo. Vale tanto dentro quanto fora da
+  // tela cheia.
+  useEffect(() => {
+    setControlsVisible(true);
+    hideControlsTimerRef.current = setTimeout(
+      () => setControlsVisible(false),
+      2500
+    );
+
+    function onActivity() {
+      setControlsVisible(true);
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      hideControlsTimerRef.current = setTimeout(
+        () => setControlsVisible(false),
+        2500
+      );
+    }
+
+    const stage = stageRef.current;
+    stage?.addEventListener("mousemove", onActivity);
+    stage?.addEventListener("pointerdown", onActivity);
+
+    return () => {
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      stage?.removeEventListener("mousemove", onActivity);
+      stage?.removeEventListener("pointerdown", onActivity);
+    };
+  }, [stageFullscreen]);
+
+  // "Parar de assistir" mora aqui (não dentro do VoiceStage) pra poder ser
+  // disparado tanto pelo botão flutuante em tela cheia quanto pelo botão
+  // na hotbar fora dela.
   const allScreenShareTracks = useTracks([Track.Source.ScreenShare]).filter(
     (t) => !t.publication.isMuted
   );
-  const cameraTracks = useTracks([Track.Source.Camera]).filter(
-    (t) => !t.publication.isMuted
-  );
-
-  // Parar de assistir é só uma preferência local: some daqui, mas
-  // continua chegando pra quem não fechou.
   const [hiddenSids, setHiddenSids] = useState<Set<string>>(new Set());
   const screenShareTracks = allScreenShareTracks.filter(
     (t) => !hiddenSids.has(t.publication.trackSid)
@@ -186,79 +322,439 @@ function VoiceStage({ channelName }: { channelName: string }) {
     });
   }
 
-  // Só webcams, sem ninguém compartilhando tela: os blocos ficam grandes,
-  // num grid que se ajusta à quantidade de gente (pensado pra ~8 amigos).
-  if (screenShareTracks.length === 0 && cameraTracks.length > 0) {
-    return (
-      <div
-        className="grid flex-1 auto-rows-fr gap-3 overflow-y-auto bg-black/40 p-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}
-      >
-        {cameraTracks.map((track) => (
-          <div
-            key={track.publication.trackSid}
-            className="relative overflow-hidden rounded-lg bg-black"
-          >
-            <VideoTrack
-              trackRef={track}
-              className="h-full w-full object-cover"
+  function stopWatchingAll() {
+    setHiddenSids((prev) => {
+      const next = new Set(prev);
+      for (const t of screenShareTracks) next.add(t.publication.trackSid);
+      return next;
+    });
+  }
+
+  // Reações estilo Google Meet: manda um emoji pelos dados do LiveKit e
+  // todo mundo na sala vê ele subindo flutuando por cima do vídeo.
+  const [reactions, setReactions] = useState<
+    { id: string; emoji: string; drift: number }[]
+  >([]);
+
+  function spawnReaction(emoji: string) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const drift = Math.random() * 70 - 35;
+    setReactions((prev) => [...prev, { id, emoji, drift }]);
+    setTimeout(() => {
+      setReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 3000);
+  }
+
+  const { send: sendReaction } = useDataChannel("reactions", (msg) => {
+    spawnReaction(new TextDecoder().decode(msg.payload));
+  });
+
+  function handleSendReaction(emoji: string) {
+    spawnReaction(emoji);
+    sendReaction(new TextEncoder().encode(emoji), { reliable: true });
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <RoomAudioRenderer volume={muted ? 0 : volume} />
+
+      {minimized && onExpand && <MiniStreamBubble onExpand={onExpand} />}
+
+      <div className="min-h-0 flex-1 p-3 md:p-5">
+        <div
+          ref={stageRef}
+          className={`flex h-full w-full overflow-hidden bg-black shadow-[0_0_70px_rgba(0,0,0,0.65)] ring-1 ring-white/10 ${
+            stageFullscreen ? "" : "rounded-2xl"
+          }`}
+        >
+          <div className="relative min-w-0 flex-1 overflow-hidden">
+            <VoiceStage
+              channelName={channelName}
+              controlsVisible={controlsVisible}
+              stageFullscreen={stageFullscreen}
+              screenShareTracks={screenShareTracks}
+              hiddenTracks={hiddenTracks}
+              onStopWatching={stopWatching}
+              onResumeWatching={resumeWatching}
             />
-            <p className="absolute bottom-0 left-0 bg-black/60 px-2 py-1 text-xs text-white">
-              {track.participant.name}
-            </p>
+
+            <ReactionsLayer reactions={reactions} />
+
+            {stageFullscreen && chatChannel && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStageChatOpen((o) => {
+                    if (!o) onStageChatOpen?.();
+                    return !o;
+                  });
+                }}
+                title={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
+                aria-label={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
+                className={`absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-sm transition-all duration-500 hover:bg-black/50 hover:text-white ${
+                  stageChatOpen ? "bg-gold/25 text-gold" : "bg-black/25 text-white/70"
+                } ${
+                  controlsVisible || stageChatOpen
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
+                }`}
+              >
+                <ChatBubbleIcon />
+              </button>
+            )}
+
+            {stageFullscreen && (
+              <button
+                type="button"
+                onClick={toggleStageFullscreen}
+                title="Sair da tela cheia (Esc)"
+                aria-label="Sair da tela cheia"
+                className={`absolute right-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/25 text-white/70 backdrop-blur-sm transition-all duration-500 hover:bg-black/50 hover:text-white ${
+                  controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+              >
+                <FullscreenExitIcon />
+              </button>
+            )}
           </div>
-        ))}
+
+          {stageFullscreen && chatChannel && stageChatOpen && (
+            <div className="flex w-full max-w-full shrink-0 flex-col bg-panel ring-1 ring-white/10 sm:w-80 sm:max-w-[40vw] lg:w-96">
+              <ChatChannel
+                channel={chatChannel}
+                profile={profile}
+                onClose={() => setStageChatOpen(false)}
+              />
+            </div>
+          )}
+        </div>
       </div>
+
+      <div className="shrink-0 px-3 pb-4 md:px-5 md:pb-6">
+        <VoiceControlBar
+          volume={volume}
+          muted={muted}
+          onVolumeChange={setVolume}
+          onToggleMuted={() => setMuted((m) => !m)}
+          resolution={resolution}
+          fps={fps}
+          onResolutionChange={setResolution}
+          onFpsChange={setFps}
+          stageFullscreen={stageFullscreen}
+          onToggleStageFullscreen={toggleStageFullscreen}
+          onReact={handleSendReaction}
+          watchingCount={screenShareTracks.length}
+          onStopWatchingAll={stopWatchingAll}
+        />
+      </div>
+    </div>
+  );
+}
+
+const REACTIONS = ["❤️", "👍", "🎉", "👏", "😂", "😮", "😢", "🤔", "👎"] as const;
+
+// Camada por cima do vídeo onde os emojis de reação sobem flutuando —
+// igual Google Meet. Puramente visual, não intercepta cliques.
+function ReactionsLayer({
+  reactions,
+}: {
+  reactions: { id: string; emoji: string; drift: number }[];
+}) {
+  if (reactions.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+      {reactions.map((r) => (
+        <span
+          key={r.id}
+          className="reaction-float absolute bottom-6 left-1/2 text-4xl drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)] sm:text-5xl"
+          style={
+            {
+              "--reaction-drift-start": `${r.drift * 0.2}px`,
+              "--reaction-drift-mid": `${r.drift}px`,
+              "--reaction-drift-end": `${r.drift * 1.6}px`,
+            } as React.CSSProperties
+          }
+        >
+          {r.emoji}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Bolha flutuante com prévia ao vivo, arrastável, que aparece por cima do
+// chat em tela cheia — clicar (sem arrastar) volta pra visão da sala.
+const BUBBLE_WIDTH = 208;
+const BUBBLE_HEIGHT = 152;
+const BUBBLE_MARGIN = 16;
+
+function MiniStreamBubble({ onExpand }: { onExpand: () => void }) {
+  const screenTracks = useTracks([Track.Source.ScreenShare]).filter(
+    (t) => !t.publication.isMuted
+  );
+  const cameraTracks = useTracks([Track.Source.Camera]).filter(
+    (t) => !t.publication.isMuted
+  );
+  const previewTrack = screenTracks[0] ?? cameraTracks[0] ?? null;
+
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const draggingRef = useRef(false);
+  const draggedRef = useRef(false);
+  const grabOffsetRef = useRef({ x: 0, y: 0 });
+
+  function clamp(x: number, y: number) {
+    const maxX = window.innerWidth - BUBBLE_WIDTH - BUBBLE_MARGIN;
+    const maxY = window.innerHeight - BUBBLE_HEIGHT - BUBBLE_MARGIN;
+    return {
+      x: Math.min(Math.max(BUBBLE_MARGIN, x), Math.max(BUBBLE_MARGIN, maxX)),
+      y: Math.min(Math.max(BUBBLE_MARGIN, y), Math.max(BUBBLE_MARGIN, maxY)),
+    };
+  }
+
+  // Aparece pela primeira vez ancorada no canto inferior direito, acima
+  // da barra de digitar, sem tampar os botões de GIF/emoji.
+  useEffect(() => {
+    if (pos) return;
+    setPos(
+      clamp(
+        window.innerWidth - BUBBLE_WIDTH - BUBBLE_MARGIN,
+        window.innerHeight - BUBBLE_HEIGHT - 96
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function onResize() {
+      setPos((p) => (p ? clamp(p.x, p.y) : p));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (!bubbleRef.current) return;
+    draggingRef.current = true;
+    draggedRef.current = false;
+    const rect = bubbleRef.current.getBoundingClientRect();
+    grabOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!draggingRef.current) return;
+    draggedRef.current = true;
+    setPos(
+      clamp(
+        e.clientX - grabOffsetRef.current.x,
+        e.clientY - grabOffsetRef.current.y
+      )
     );
   }
 
-  if (screenShareTracks.length > 0) {
-    return (
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-black/40 p-4">
-        {cameraTracks.length > 0 && (
-          <div className="flex flex-wrap justify-center gap-3">
-            {cameraTracks.map((track) => (
-              <div
-                key={track.publication.trackSid}
-                className="w-56 overflow-hidden rounded-lg bg-black"
-              >
-                <VideoTrack trackRef={track} className="w-full" />
-                <p className="bg-black/60 px-2 py-1 text-xs text-white">
-                  {track.participant.name}
-                </p>
-              </div>
-            ))}
+  function onPointerUp() {
+    draggingRef.current = false;
+    if (!draggedRef.current) onExpand();
+  }
+
+  if (!pos) return null;
+
+  return createPortal(
+    <div
+      ref={bubbleRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      style={{ left: pos.x, top: pos.y, width: BUBBLE_WIDTH }}
+      title="Arraste para mover · clique para voltar à transmissão"
+      className="fixed z-30 cursor-grab touch-none select-none overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-gold/30 backdrop-blur-md transition-shadow hover:ring-gold/60 active:cursor-grabbing"
+    >
+      <div className="relative aspect-video w-full bg-gradient-to-br from-panel to-black">
+        {previewTrack ? (
+          <VideoTrack
+            trackRef={previewTrack}
+            className="pointer-events-none h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-gold/70">
+            <SpeakerWaveIcon />
           </div>
         )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-accent">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+          Ao vivo
+        </span>
+      </div>
+      <div className="pointer-events-none flex items-center justify-center gap-1.5 bg-panel/95 py-1.5 text-[11px] font-medium text-white">
+        <ExpandIcon />
+        Voltar para a transmissão
+      </div>
+    </div>,
+    document.body
+  );
+}
 
-        <div className="flex flex-1 flex-wrap items-center justify-center gap-4">
+function VoiceStage({
+  channelName,
+  controlsVisible,
+  stageFullscreen,
+  screenShareTracks,
+  hiddenTracks,
+  onStopWatching,
+  onResumeWatching,
+}: {
+  channelName: string;
+  controlsVisible: boolean;
+  stageFullscreen: boolean;
+  screenShareTracks: TrackReference[];
+  hiddenTracks: TrackReference[];
+  onStopWatching: (trackSid: string) => void;
+  onResumeWatching: (trackSid: string) => void;
+}) {
+  const participants = useParticipants();
+  const { localParticipant } = useLocalParticipant();
+
+  const allCameraTracks = useTracks([Track.Source.Camera]).filter(
+    (t) => !t.publication.isMuted
+  );
+
+  const localCameraTrack = allCameraTracks.find(
+    (t) => t.participant.identity === localParticipant.identity
+  );
+  const remoteCameraTracks = allCameraTracks.filter(
+    (t) => t.participant.identity !== localParticipant.identity
+  );
+
+  // Alguém compartilhando tela: isso é a "tela de cinema" — vira o
+  // conteúdo principal. As webcams viram uma fileira que rola na horizontal
+  // por cima, então dá pra caber o grupo inteiro (7-9 pessoas) sem tampar
+  // a transmissão nem estourar a tela.
+  if (screenShareTracks.length > 0) {
+    const orderedCameraTracks = localCameraTrack
+      ? [localCameraTrack, ...remoteCameraTracks]
+      : remoteCameraTracks;
+
+    return (
+      <div className="flex h-full w-full flex-col">
+        <div className="flex shrink-0 items-start gap-2 bg-black p-3 pr-16">
+          <div className="flex shrink-0 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-md">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            <span className="hidden text-[11px] font-bold uppercase tracking-widest text-white sm:inline">
+              Em exibição
+            </span>
+          </div>
+
+          {orderedCameraTracks.length > 0 && (
+            <div className="cam-strip flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+              {orderedCameraTracks.map((track) => {
+                const isLocal =
+                  track.participant.identity === localParticipant.identity;
+                return (
+                  <div
+                    key={track.publication.trackSid}
+                    className={`relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-black shadow-lg sm:w-28 md:w-32 ${
+                      isLocal
+                        ? "ring-2 ring-gold/70"
+                        : "ring-1 ring-white/15"
+                    }`}
+                  >
+                    <VideoTrack
+                      trackRef={track}
+                      className={`h-full w-full object-cover ${
+                        isLocal ? "-scale-x-100" : ""
+                      }`}
+                    />
+                    <p
+                      className={`absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1.5 py-0.5 text-[9px] ${
+                        isLocal ? "text-gold" : "text-white"
+                      }`}
+                    >
+                      {isLocal ? "Você" : track.participant.name}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="relative flex min-h-0 flex-1 flex-wrap items-center justify-center gap-4 p-2">
           {screenShareTracks.map((track) => (
             <ScreenShareTile
               key={track.publication.trackSid}
               track={track}
-              onStopWatching={() => stopWatching(track.publication.trackSid)}
+              onStopWatching={() => onStopWatching(track.publication.trackSid)}
+              controlsVisible={controlsVisible}
+              showStopButton={stageFullscreen}
             />
+          ))}
+
+          <HiddenSharesBar tracks={hiddenTracks} onResume={onResumeWatching} />
+        </div>
+      </div>
+    );
+  }
+
+  // Só webcams, sem ninguém compartilhando tela: os blocos ficam grandes,
+  // num grid que se ajusta à quantidade de gente.
+  if (allCameraTracks.length > 0) {
+    return (
+      <div className="flex h-full flex-col gap-3 overflow-y-auto bg-gradient-to-b from-black to-panel/40 p-4">
+        <div
+          className="grid flex-1 auto-rows-fr gap-3"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
+        >
+          {allCameraTracks.map((track) => (
+            <div
+              key={track.publication.trackSid}
+              className="relative min-h-[160px] overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+            >
+              <VideoTrack
+                trackRef={track}
+                className={`h-full w-full object-cover ${
+                  track.participant.identity === localParticipant.identity
+                    ? "-scale-x-100"
+                    : ""
+                }`}
+              />
+              <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 text-xs font-medium text-white">
+                {track.participant.name}
+              </p>
+            </div>
           ))}
         </div>
 
-        <HiddenSharesBar tracks={hiddenTracks} onResume={resumeWatching} />
+        <HiddenSharesBar
+          tracks={hiddenTracks}
+          onResume={onResumeWatching}
+          inline
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto bg-panelLight/40 p-8">
-      <div className="flex flex-wrap items-start justify-center gap-8">
-        {participants.map((p) => (
-          <ParticipantAvatar key={p.identity} participant={p} />
-        ))}
-        {participants.length === 0 && (
-          <p className="text-sm text-muted">
-            Ninguém na sala {channelName} ainda.
-          </p>
-        )}
+    <div className="flex h-full flex-col items-center justify-center gap-6 overflow-y-auto bg-gradient-to-b from-panel/60 to-black p-6 sm:p-8">
+      <div>
+        <p className="mb-4 text-center font-display text-sm uppercase tracking-[0.3em] text-muted">
+          Aguardando sessão
+        </p>
+        <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8">
+          {participants.map((p) => (
+            <ParticipantAvatar key={p.identity} participant={p} />
+          ))}
+          {participants.length === 0 && (
+            <p className="text-sm text-muted">
+              Ninguém na sala {channelName} ainda.
+            </p>
+          )}
+        </div>
       </div>
-      <HiddenSharesBar tracks={hiddenTracks} onResume={resumeWatching} />
+
+      <HiddenSharesBar tracks={hiddenTracks} onResume={onResumeWatching} inline />
     </div>
   );
 }
@@ -266,91 +762,104 @@ function VoiceStage({ channelName }: { channelName: string }) {
 function HiddenSharesBar({
   tracks,
   onResume,
+  inline = false,
 }: {
   tracks: TrackReference[];
   onResume: (trackSid: string) => void;
+  inline?: boolean;
 }) {
   if (tracks.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
+    <div
+      className={`z-10 flex shrink-0 flex-wrap items-center justify-center gap-3 ${
+        inline
+          ? "w-full px-2"
+          : "absolute bottom-4 left-1/2 -translate-x-1/2 px-4"
+      }`}
+    >
       {tracks.map((track) => (
         <button
           key={track.publication.trackSid}
           type="button"
           onClick={() => onResume(track.publication.trackSid)}
-          className="flex items-center gap-2 rounded-full bg-panel px-3 py-1.5 text-xs text-muted transition hover:bg-panelLight hover:text-white"
+          title={`Assistir a tela de ${track.participant.name} de novo`}
+          className="group w-full max-w-[180px] overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-gold/30 backdrop-blur-md transition hover:ring-gold/60 sm:max-w-[208px]"
         >
-          <ScreenShareIcon />
-          Assistir a tela de {track.participant.name} de novo
+          <div className="relative aspect-video w-full bg-gradient-to-br from-panel to-black">
+            <VideoTrack
+              trackRef={track}
+              className="pointer-events-none h-full w-full object-cover opacity-60 transition group-hover:opacity-80"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-accent">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+              Ao vivo
+            </span>
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-white/80 opacity-0 transition group-hover:opacity-100">
+              <PlayCircleIcon />
+            </span>
+          </div>
+          <div className="flex flex-col items-start gap-0.5 bg-panel/95 px-3 py-2 text-left">
+            <span className="text-xs font-semibold text-white">
+              Clique para assistir novamente
+            </span>
+            <span className="truncate text-[11px] text-muted">
+              {track.participant.name} está transmitindo
+            </span>
+          </div>
         </button>
       ))}
     </div>
   );
 }
 
+function PlayCircleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M10 8.5v7l6-3.5-6-3.5z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function ScreenShareTile({
   track,
   onStopWatching,
+  controlsVisible,
+  showStopButton,
 }: {
   track: TrackReference;
   onStopWatching: () => void;
+  controlsVisible: boolean;
+  showStopButton: boolean;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  useEffect(() => {
-    function onChange() {
-      setIsFullscreen(document.fullscreenElement === containerRef.current);
-    }
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
-
-  function toggleFullscreen() {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      containerRef.current?.requestFullscreen();
-    }
-  }
-
   return (
-    <div
-      ref={containerRef}
-      className={`group relative flex h-full max-h-full w-full max-w-full flex-col overflow-hidden bg-black ${
-        isFullscreen ? "" : "rounded-lg"
-      }`}
-    >
+    <div className="group relative flex h-full max-h-full w-full max-w-full flex-1 flex-col overflow-hidden">
       <VideoTrack
         trackRef={track}
         className="h-full w-full flex-1 object-contain"
       />
-      <p className="absolute bottom-0 left-0 bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition group-hover:opacity-100">
-        {track.participant.name} está compartilhando a tela
+      <p
+        className={`absolute bottom-0 left-0 bg-black/60 px-2 py-1 text-xs text-white transition-opacity duration-500 ${
+          controlsVisible ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {track.participant.name} está transmitindo
       </p>
-      <div className="absolute bottom-2 right-2 flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
-        {!isFullscreen && (
-          <button
-            type="button"
-            onClick={onStopWatching}
-            title="Parar de assistir"
-            aria-label="Parar de assistir"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
-          >
-            <StopWatchingIcon />
-          </button>
-        )}
+      {showStopButton && (
         <button
           type="button"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-          aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+          onClick={onStopWatching}
+          title="Parar de assistir"
+          aria-label="Parar de assistir"
+          className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white transition-all duration-500 hover:bg-black/80 ${
+            controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
         >
-          {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          <StopWatchingIcon />
         </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -369,7 +878,7 @@ function ParticipantAvatar({ participant }: { participant: Participant }) {
 
   return (
     <div className="flex w-24 flex-col items-center gap-2">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-white">
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-white ring-2 ring-white/10">
         {avatarUrl ? (
           <img
             src={avatarUrl}
@@ -396,6 +905,11 @@ function VoiceControlBar({
   fps,
   onResolutionChange,
   onFpsChange,
+  stageFullscreen,
+  onToggleStageFullscreen,
+  onReact,
+  watchingCount,
+  onStopWatchingAll,
 }: {
   volume: number;
   muted: boolean;
@@ -405,13 +919,19 @@ function VoiceControlBar({
   fps: FpsKey;
   onResolutionChange: (r: ResolutionKey) => void;
   onFpsChange: (f: FpsKey) => void;
+  stageFullscreen: boolean;
+  onToggleStageFullscreen: () => void;
+  onReact: (emoji: string) => void;
+  watchingCount: number;
+  onStopWatchingAll: () => void;
 }) {
   const { isCameraEnabled, isScreenShareEnabled, localParticipant } =
     useLocalParticipant();
-  const slot = usePortalTarget("voice-control-slot");
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const reactButtonRef = useRef<HTMLButtonElement>(null);
 
   // Só a tela compartilhada pode ter áudio (a webcam nunca tem) — o
   // controle de volume só faz sentido enquanto isso estiver rolando.
@@ -431,32 +951,7 @@ function VoiceControlBar({
           resolution: { ...RESOLUTIONS[resolution], frameRate: fps },
           contentHint: "motion",
         },
-        {
-          // VP8 é o único codec com simulcast "clássico" (RTP, uma camada por
-          // encoder) com suporte amplo e previsível em Chrome/Firefox/Edge.
-          // H.264 não tem simulcast no browser (praticamente nenhum navegador
-          // implementa), e VP9/AV1 usam SVC, que tem suporte mais irregular
-          // (a própria lib tem workarounds pra Safari/RN/Chrome antigo com
-          // SVC). Pra 7 espectadores com redes variadas, VP8 é a aposta mais
-          // segura.
-          videoCodec: "vp8",
-          // Liga simulcast: o SFU passa a ter mais de uma camada de vídeo
-          // pra oferecer, então cada espectador recebe a que a rede dele
-          // aguenta em vez de todos receberem o mesmo stream pesado.
-          simulcast: true,
-          screenShareSimulcastLayers: SCREEN_SHARE_FALLBACK_LAYERS[resolution],
-          // Padrão do LiveKit pra screen share é 'maintain-resolution' (mantém
-          // nitidez, descarta frames se a rede apertar). Aqui queremos o
-          // oposto: fluidez antes de nitidez.
-          degradationPreference: "maintain-framerate",
-          screenShareEncoding: {
-            maxBitrate: SCREEN_SHARE_BITRATE[resolution][fps],
-            maxFramerate: fps,
-            // Garante que a tela compartilhada não perca banda pra webcams
-            // quando a conexão de quem compartilha estiver apertada.
-            priority: "high",
-          },
-        }
+        { videoCodec: "vp8", simulcast: false }
       );
       setShareMenuOpen(false);
     } catch {
@@ -475,15 +970,21 @@ function VoiceControlBar({
     }
   }
 
-  const bar = (
-    <div className="flex flex-wrap items-center justify-center gap-1.5">
+  return (
+    <div className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl bg-panel/90 px-2 py-2 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl sm:gap-1.5 sm:px-3">
       <TrackToggle
         source={Track.Source.Camera}
         showIcon={false}
-        title={isCameraEnabled ? "Desligar webcam" : "Compartilhar webcam"}
-        className={controlButtonClass(isCameraEnabled, "accent", true)}
+        title={isCameraEnabled ? "Desligar webcam" : "Ligar webcam"}
+        className={dockButtonClass(isCameraEnabled)}
+        style={
+          isCameraEnabled
+            ? { backgroundColor: "rgba(212,175,55,0.15)" }
+            : undefined
+        }
       >
         <CameraIcon />
+        <DockLabel>Webcam</DockLabel>
       </TrackToggle>
 
       <button
@@ -492,9 +993,10 @@ function VoiceControlBar({
         title={isScreenShareEnabled ? "Parar compartilhamento" : "Compartilhar tela"}
         aria-label={isScreenShareEnabled ? "Parar compartilhamento" : "Compartilhar tela"}
         onClick={handleScreenShareClick}
-        className={controlButtonClass(isScreenShareEnabled || shareMenuOpen, "accent", true)}
+        className={dockButtonClass(isScreenShareEnabled || shareMenuOpen)}
       >
         <ScreenShareIcon />
+        <DockLabel>Tela</DockLabel>
       </button>
 
       {shareMenuOpen && !isScreenShareEnabled && (
@@ -502,7 +1004,7 @@ function VoiceControlBar({
           anchorRef={shareButtonRef}
           onClose={() => setShareMenuOpen(false)}
         >
-          <p className="mb-2 text-xs font-bold uppercase text-muted">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gold">
             Compartilhar tela
           </p>
 
@@ -515,8 +1017,8 @@ function VoiceControlBar({
                 onClick={() => onResolutionChange(r)}
                 className={`flex-1 rounded px-1 py-1 text-xs transition ${
                   resolution === r
-                    ? "bg-accent text-white"
-                    : "bg-panelLight text-muted hover:text-white"
+                    ? "bg-gold text-black font-semibold"
+                    : "bg-white/5 text-muted hover:text-white"
                 }`}
               >
                 {r}
@@ -533,8 +1035,8 @@ function VoiceControlBar({
                 onClick={() => onFpsChange(f)}
                 className={`flex-1 rounded px-1 py-1 text-xs transition ${
                   fps === f
-                    ? "bg-accent text-white"
-                    : "bg-panelLight text-muted hover:text-white"
+                    ? "bg-gold text-black font-semibold"
+                    : "bg-white/5 text-muted hover:text-white"
                 }`}
               >
                 {f} fps
@@ -554,7 +1056,7 @@ function VoiceControlBar({
       )}
 
       {anyoneSharingScreen && (
-        <div className="flex items-center gap-1.5 rounded-full bg-panel px-2 py-1">
+        <div className="flex items-center gap-1.5 rounded-full bg-black/30 px-2.5 py-1.5">
           <button
             type="button"
             title={muted ? "Ativar áudio" : "Mutar áudio"}
@@ -574,27 +1076,105 @@ function VoiceControlBar({
               onVolumeChange(v);
               if (v > 0 && muted) onToggleMuted();
             }}
-            className="w-14 accent-accent"
+            className="w-14 accent-gold sm:w-20"
             aria-label="Volume"
           />
         </div>
       )}
 
+      {watchingCount > 0 && (
+        <button
+          type="button"
+          title="Parar de assistir"
+          aria-label="Parar de assistir"
+          onClick={onStopWatchingAll}
+          className={dockButtonClass(false)}
+        >
+          <StopWatchingIcon />
+          <DockLabel>Parar</DockLabel>
+        </button>
+      )}
+
+      <button
+        ref={reactButtonRef}
+        type="button"
+        title="Reagir"
+        aria-label="Reagir"
+        onClick={() => setReactMenuOpen((o) => !o)}
+        className={dockButtonClass(reactMenuOpen)}
+      >
+        <ReactionIcon />
+        <DockLabel>Reagir</DockLabel>
+      </button>
+
+      {reactMenuOpen && (
+        <AnchoredPopover
+          anchorRef={reactButtonRef}
+          onClose={() => setReactMenuOpen(false)}
+        >
+          <div className="grid grid-cols-5 gap-1">
+            {REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  onReact(emoji);
+                  setReactMenuOpen(false);
+                }}
+                title={`Reagir com ${emoji}`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:scale-125 hover:bg-white/10"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </AnchoredPopover>
+      )}
+
+      <button
+        type="button"
+        title={stageFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+        aria-label={stageFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+        onClick={onToggleStageFullscreen}
+        className={dockButtonClass(stageFullscreen)}
+      >
+        {stageFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+        <DockLabel>Tela cheia</DockLabel>
+      </button>
+
+      <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
+
       <DisconnectButton
-        title="Sair do canal"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/90 text-white transition hover:bg-red-500"
+        title="Sair da sala"
+        className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-accent px-3 text-white transition hover:bg-accentHover sm:h-12 sm:px-4"
       >
         <LeaveIcon />
+        <DockLabel danger>Sair</DockLabel>
       </DisconnectButton>
     </div>
   );
+}
 
-  if (!slot) return null;
-  return createPortal(bar, slot);
+function DockLabel({
+  children,
+  danger,
+}: {
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <span
+      className={`hidden text-[10px] font-medium leading-none sm:block ${
+        danger ? "text-white" : ""
+      }`}
+    >
+      {children}
+    </span>
+  );
 }
 
 // Renderiza fixo em document.body posicionado perto do botão, pra nunca
-// ficar cortado pela sidebar estreita (que tem overflow limitado).
+// ficar cortado por painéis estreitos (que têm overflow limitado).
 function AnchoredPopover({
   anchorRef,
   onClose,
@@ -641,7 +1221,7 @@ function AnchoredPopover({
     <div
       ref={popoverRef}
       style={{ top: pos.top, left: pos.left, width: 208, transform: "translateY(-100%)" }}
-      className="fixed z-50 rounded-lg bg-panel p-3 text-sm shadow-xl ring-1 ring-black/30"
+      className="fixed z-50 rounded-lg bg-panel p-3 text-sm shadow-xl ring-1 ring-gold/20"
     >
       {children}
     </div>,
@@ -649,41 +1229,55 @@ function AnchoredPopover({
   );
 }
 
-// Sobe os controles pra dentro do slot que fica no Sidebar, perto do
-// perfil/botão de sair — igual o Discord de verdade, em vez de uma
-// barra separada embaixo do vídeo.
-function usePortalTarget(id: string) {
-  const [target, setTarget] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setTarget(document.getElementById(id));
-  }, [id]);
-
-  return target;
-}
-
-function controlButtonClass(
-  active: boolean,
-  variant: "accent" | "danger" = "accent",
-  small = false
-) {
-  const activeClasses =
-    variant === "danger"
-      ? "bg-red-500/90 text-white hover:bg-red-500"
-      : "bg-accent text-white hover:bg-accentHover";
-  const size = small ? "h-8 w-8" : "h-10 w-10";
-
-  return `flex ${size} items-center justify-center rounded-full transition ${
-    active ? activeClasses : "bg-panelLight text-muted hover:bg-panelLight/70 hover:text-white"
+function dockButtonClass(active: boolean) {
+  return `flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl transition sm:h-12 sm:w-16 ${
+    active
+      ? "bg-gold/15 text-gold ring-1 ring-gold/40"
+      : "text-muted hover:bg-white/5 hover:text-white"
   }`;
 }
 
-function SpeakerIcon() {
+function ExpandIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+function SpeakerWaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M18.36 5.64a9 9 0 0 1 0 12.72" />
+    </svg>
+  );
+}
+
+function StopWatchingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.6 19.6 0 0 1 4.22-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a19.7 19.7 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+function ChatBubbleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function ReactionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <line x1="9" y1="9" x2="9.01" y2="9" />
+      <line x1="15" y1="9" x2="15.01" y2="9" />
     </svg>
   );
 }
@@ -725,24 +1319,6 @@ function VolumeOffIcon() {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <line x1="23" y1="9" x2="17" y2="15" />
       <line x1="17" y1="9" x2="23" y2="15" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-function StopWatchingIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.6 19.6 0 0 1 4.22-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a19.7 19.7 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-      <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   );
 }

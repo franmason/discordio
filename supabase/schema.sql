@@ -46,7 +46,8 @@ create index if not exists messages_channel_created_idx
 -- Canais fixos do servidor (MVP: um servidor só)
 insert into channels (name, type, position) values
   ('geral', 'text', 1),
-  ('Sala de Voz 1', 'voice', 2)
+  ('Sala de Voz 1', 'voice', 2),
+  ('Sala de Voz 2', 'voice', 3)
 on conflict (name) do nothing;
 
 alter table profiles enable row level security;
