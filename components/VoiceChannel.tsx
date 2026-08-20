@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Track } from "livekit-client";
-import type { Participant } from "livekit-client";
+import { ScreenSharePresets, Track } from "livekit-client";
+import type { Participant, VideoPreset } from "livekit-client";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -116,6 +116,19 @@ const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
   "720p": { 30: 2_500_000, 60: 4_000_000 },
   "1080p": { 30: 4_000_000, 60: 6_000_000 },
   "1440p": { 30: 6_000_000, 60: 9_000_000 },
+};
+
+// Camadas extras (mais leves) publicadas junto com a camada principal, uma
+// por resolução escolhida — sempre estritamente menores que o "topo" pra
+// não duplicar resolução com ele. O SFU entrega a cada espectador a camada
+// que a conexão dele aguenta, em vez de forçar o stream pesado pra todo
+// mundo. Ambas ficam em 15fps de propósito: pra quem tem net ruim, é
+// melhor uma imagem estável em fps baixo do que travando tentando
+// acompanhar 30/60fps.
+const SCREEN_SHARE_FALLBACK_LAYERS: Record<ResolutionKey, VideoPreset[]> = {
+  "720p": [ScreenSharePresets.h360fps15],
+  "1080p": [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps15],
+  "1440p": [ScreenSharePresets.h360fps15, ScreenSharePresets.h1080fps15],
 };
 
 function RoomHall({ channelName }: { channelName: string }) {
@@ -419,8 +432,19 @@ function VoiceControlBar({
           contentHint: "motion",
         },
         {
+          // VP8 é o único codec com simulcast "clássico" (RTP, uma camada por
+          // encoder) com suporte amplo e previsível em Chrome/Firefox/Edge.
+          // H.264 não tem simulcast no browser (praticamente nenhum navegador
+          // implementa), e VP9/AV1 usam SVC, que tem suporte mais irregular
+          // (a própria lib tem workarounds pra Safari/RN/Chrome antigo com
+          // SVC). Pra 7 espectadores com redes variadas, VP8 é a aposta mais
+          // segura.
           videoCodec: "vp8",
-          simulcast: false,
+          // Liga simulcast: o SFU passa a ter mais de uma camada de vídeo
+          // pra oferecer, então cada espectador recebe a que a rede dele
+          // aguenta em vez de todos receberem o mesmo stream pesado.
+          simulcast: true,
+          screenShareSimulcastLayers: SCREEN_SHARE_FALLBACK_LAYERS[resolution],
           // Padrão do LiveKit pra screen share é 'maintain-resolution' (mantém
           // nitidez, descarta frames se a rede apertar). Aqui queremos o
           // oposto: fluidez antes de nitidez.
