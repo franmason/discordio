@@ -8,6 +8,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatChannel from "@/components/ChatChannel";
 import VoiceChannel from "@/components/VoiceChannel";
 import ProfileSettingsModal from "@/components/ProfileSettingsModal";
+import CurtainIntro from "@/components/CurtainIntro";
 
 export default function ServerPage() {
   const router = useRouter();
@@ -52,6 +53,7 @@ export default function ServerPage() {
 
   return (
     <div className="flex h-full w-full">
+      <CurtainIntro />
       <Sidebar
         channels={channels}
         activeChannelId={activeChannel?.id ?? null}

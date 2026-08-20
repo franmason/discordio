@@ -84,3 +84,26 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 export async function signOut() {
   await supabase.auth.signOut();
 }
+
+const JUST_LOGGED_IN_KEY = "just_logged_in";
+
+// Marca que a pessoa acabou de entrar (login/cadastro), pra tocar a
+// animação de cortina só nesse momento — não num F5 na sala.
+export function markJustLoggedIn() {
+  try {
+    sessionStorage.setItem(JUST_LOGGED_IN_KEY, "1");
+  } catch {
+    // sessionStorage indisponível — sem problema, só não toca a animação.
+  }
+}
+
+// Consome a marca (lê e apaga), então só dispara uma vez por login.
+export function consumeJustLoggedIn(): boolean {
+  try {
+    const value = sessionStorage.getItem(JUST_LOGGED_IN_KEY);
+    if (value) sessionStorage.removeItem(JUST_LOGGED_IN_KEY);
+    return !!value;
+  } catch {
+    return false;
+  }
+}

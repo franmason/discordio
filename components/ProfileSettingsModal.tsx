@@ -101,9 +101,9 @@ export default function ProfileSettingsModal({
       <form
         onSubmit={handleSave}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-lg bg-panel p-6 shadow-xl"
+        className="w-full max-w-sm rounded-lg bg-panel p-6 shadow-xl ring-1 ring-gold/15"
       >
-        <h2 className="mb-1 text-lg font-semibold text-white">Editar perfil</h2>
+        <h2 className="mb-1 font-display text-2xl uppercase tracking-wider text-white">Editar perfil</h2>
         <p className="mb-5 text-sm text-muted">
           Isso aparece pros outros no chat e na chamada de voz.
         </p>

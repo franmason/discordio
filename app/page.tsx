@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, Profile } from "@/lib/supabase";
-import { savePendingProfileName } from "@/lib/session";
+import { savePendingProfileName, markJustLoggedIn } from "@/lib/session";
 
 type Mode = "loading" | "login" | "signup";
 
@@ -98,6 +98,7 @@ export default function EntryPage() {
       return;
     }
 
+    markJustLoggedIn();
     router.push("/server");
   }
 
@@ -195,6 +196,7 @@ export default function EntryPage() {
 
     setSubmitting(false);
     void finalProfile;
+    markJustLoggedIn();
     router.push("/server");
   }
 
@@ -211,9 +213,9 @@ export default function EntryPage() {
       <main className="flex h-full w-full items-center justify-center bg-base">
         <form
           onSubmit={handleSignup}
-          className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl"
+          className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl ring-1 ring-gold/15"
         >
-          <h1 className="mb-1 text-xl font-semibold text-white">
+          <h1 className="mb-1 font-display text-3xl uppercase tracking-wider text-white">
             Criar conta
           </h1>
           <p className="mb-6 text-sm text-muted">
@@ -305,9 +307,9 @@ export default function EntryPage() {
     <main className="flex h-full w-full items-center justify-center bg-base">
       <form
         onSubmit={handleLogin}
-        className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl"
+        className="w-full max-w-sm rounded-lg bg-panel p-8 shadow-xl ring-1 ring-gold/15"
       >
-        <h1 className="mb-1 text-xl font-semibold text-white">Entrar</h1>
+        <h1 className="mb-1 font-display text-3xl uppercase tracking-wider text-white">Entrar</h1>
         <p className="mb-6 text-sm text-muted">
           Entra com seu email e senha.
         </p>

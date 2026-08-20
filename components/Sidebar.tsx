@@ -28,7 +28,7 @@ export default function Sidebar({
 
   return (
     <aside className="flex h-full w-60 flex-col bg-panel">
-      <div className="flex h-12 items-center border-b border-black/20 px-4 font-semibold shadow-sm">
+      <div className="flex h-12 items-center border-b border-gold/20 px-4 font-display text-lg uppercase tracking-wider shadow-sm">
         Minha Sala
       </div>
 
@@ -61,7 +61,7 @@ export default function Sidebar({
       </div>
 
       {voiceConnected && (
-        <div className="border-t border-black/20 bg-[#232428] px-2 pb-2 pt-2">
+        <div className="border-t border-black/20 bg-black/30 px-2 pb-2 pt-2">
           <div className="mb-2 flex items-center gap-2 px-1">
             <span className="relative flex h-2 w-2 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
@@ -117,7 +117,7 @@ export function Avatar({
   const initials = profile.name.slice(0, 2).toUpperCase();
   return (
     <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-bold text-white"
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-bold text-white ring-1 ring-gold/25"
       style={{ width: size, height: size, fontSize: size * 0.35 }}
     >
       {profile.avatar_url ? (
@@ -241,7 +241,7 @@ function ChannelItem({
       onClick={onClick}
       className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm transition ${
         active
-          ? "bg-panelLight text-white"
+          ? "bg-panelLight text-white shadow-[inset_3px_0_0_0_theme(colors.gold)]"
           : "text-muted hover:bg-panelLight/60 hover:text-white"
       }`}
     >

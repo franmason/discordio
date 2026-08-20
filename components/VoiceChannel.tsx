@@ -77,7 +77,7 @@ export default function VoiceChannel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 items-center gap-2 border-b border-black/20 px-4 font-semibold shadow-sm">
+      <div className="flex h-12 items-center gap-2 border-b border-gold/20 px-4 font-display text-lg uppercase tracking-wider shadow-sm">
         <SpeakerIcon /> {channel.name}
       </div>
       <LiveKitRoom
