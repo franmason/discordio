@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Track } from "livekit-client";
+import { ScreenSharePresets, Track } from "livekit-client";
 import type { Participant } from "livekit-client";
 import {
   LiveKitRoom,
@@ -222,10 +222,16 @@ type FpsKey = 30 | 60;
 // conservador (pensado pra tela estática/texto) que não segura vídeo em
 // movimento nas resoluções mais altas. 60fps pede bem mais que o dobro
 // de 30fps porque cada quadro extra ainda carrega a mesma riqueza de cor.
+//
+// Estes são valores de PICO da camada mais alta, não o que roda sempre: o
+// congestion control do WebRTC só chega neles se a banda aguentar. Ainda
+// assim ficam abaixo do que já esteve aqui (15 Mbps em 1440p60), porque
+// alvo alto demais faz o encoder oscilar tentando alcançar algo que o
+// upload doméstico não entrega — e oscilação é justamente o que trava.
 const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
-  "720p": { 30: 3_000_000, 60: 4_500_000 },
-  "1080p": { 30: 6_000_000, 60: 9_000_000 },
-  "1440p": { 30: 10_000_000, 60: 15_000_000 },
+  "720p": { 30: 2_500_000, 60: 4_000_000 },
+  "1080p": { 30: 5_000_000, 60: 8_000_000 },
+  "1440p": { 30: 8_000_000, 60: 12_000_000 },
 };
 
 function RoomHall({
@@ -1017,7 +1023,15 @@ function VoiceControlBar({
           // quem não suportar H.264, sem custo extra pro publisher.
           videoCodec: "h264",
           backupCodec: true,
-          simulcast: false,
+          // Simulcast é o que impede a transmissão de travar do lado de
+          // quem assiste. Sem ele existe uma camada só, no bitrate cheio:
+          // se o download de alguém (ou o upload de quem transmite) não
+          // segura aquele valor, o servidor não tem nada menor pra mandar
+          // e a imagem congela em vez de perder qualidade. Com a camada
+          // baixa publicada junto, quem está com banda ruim cai pra ela e
+          // continua fluido, sem afetar quem está bem.
+          simulcast: true,
+          screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
           screenShareEncoding: {
             maxBitrate: SCREEN_SHARE_BITRATE[resolution][fps],
             maxFramerate: fps,
