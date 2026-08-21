@@ -218,6 +218,16 @@ const RESOLUTIONS = {
 type ResolutionKey = keyof typeof RESOLUTIONS;
 type FpsKey = 30 | 60;
 
+// Bitrate alvo por resolução/fps — sem isso o LiveKit usa um default
+// conservador (pensado pra tela estática/texto) que não segura vídeo em
+// movimento nas resoluções mais altas. 60fps pede bem mais que o dobro
+// de 30fps porque cada quadro extra ainda carrega a mesma riqueza de cor.
+const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
+  "720p": { 30: 3_000_000, 60: 4_500_000 },
+  "1080p": { 30: 6_000_000, 60: 9_000_000 },
+  "1440p": { 30: 10_000_000, 60: 15_000_000 },
+};
+
 function RoomHall({
   channelName,
   minimized,
@@ -384,10 +394,8 @@ function RoomHall({
               <button
                 type="button"
                 onClick={() => {
-                  setStageChatOpen((o) => {
-                    if (!o) onStageChatOpen?.();
-                    return !o;
-                  });
+                  if (!stageChatOpen) onStageChatOpen?.();
+                  setStageChatOpen((o) => !o);
                 }}
                 title={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
                 aria-label={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
@@ -416,6 +424,31 @@ function RoomHall({
                 <FullscreenExitIcon />
               </button>
             )}
+
+            {stageFullscreen && (
+              <div
+                className={`absolute inset-x-0 bottom-0 z-20 flex justify-center pb-4 transition-opacity duration-500 ${
+                  controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+              >
+                <VoiceControlBar
+                  volume={volume}
+                  muted={muted}
+                  onVolumeChange={setVolume}
+                  onToggleMuted={() => setMuted((m) => !m)}
+                  resolution={resolution}
+                  fps={fps}
+                  onResolutionChange={setResolution}
+                  onFpsChange={setFps}
+                  stageFullscreen={stageFullscreen}
+                  onToggleStageFullscreen={toggleStageFullscreen}
+                  onReact={handleSendReaction}
+                  watchingCount={screenShareTracks.length}
+                  onStopWatchingAll={stopWatchingAll}
+                  floating
+                />
+              </div>
+            )}
           </div>
 
           {stageFullscreen && chatChannel && stageChatOpen && (
@@ -430,23 +463,25 @@ function RoomHall({
         </div>
       </div>
 
-      <div className="shrink-0 px-3 pb-4 md:px-5 md:pb-6">
-        <VoiceControlBar
-          volume={volume}
-          muted={muted}
-          onVolumeChange={setVolume}
-          onToggleMuted={() => setMuted((m) => !m)}
-          resolution={resolution}
-          fps={fps}
-          onResolutionChange={setResolution}
-          onFpsChange={setFps}
-          stageFullscreen={stageFullscreen}
-          onToggleStageFullscreen={toggleStageFullscreen}
-          onReact={handleSendReaction}
-          watchingCount={screenShareTracks.length}
-          onStopWatchingAll={stopWatchingAll}
-        />
-      </div>
+      {!stageFullscreen && (
+        <div className="shrink-0 px-3 pb-4 md:px-5 md:pb-6">
+          <VoiceControlBar
+            volume={volume}
+            muted={muted}
+            onVolumeChange={setVolume}
+            onToggleMuted={() => setMuted((m) => !m)}
+            resolution={resolution}
+            fps={fps}
+            onResolutionChange={setResolution}
+            onFpsChange={setFps}
+            stageFullscreen={stageFullscreen}
+            onToggleStageFullscreen={toggleStageFullscreen}
+            onReact={handleSendReaction}
+            watchingCount={screenShareTracks.length}
+            onStopWatchingAll={stopWatchingAll}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -568,7 +603,11 @@ function MiniStreamBubble({ onExpand }: { onExpand: () => void }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       style={{ left: pos.x, top: pos.y, width: BUBBLE_WIDTH }}
-      title="Arraste para mover · clique para voltar à transmissão"
+      title={
+        previewTrack
+          ? "Arraste para mover · clique para voltar à transmissão"
+          : "Arraste para mover · clique para voltar à chamada"
+      }
       className="fixed z-30 cursor-grab touch-none select-none overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-gold/30 backdrop-blur-md transition-shadow hover:ring-gold/60 active:cursor-grabbing"
     >
       <div className="relative aspect-video w-full bg-gradient-to-br from-panel to-black">
@@ -590,7 +629,7 @@ function MiniStreamBubble({ onExpand }: { onExpand: () => void }) {
       </div>
       <div className="pointer-events-none flex items-center justify-center gap-1.5 bg-panel/95 py-1.5 text-[11px] font-medium text-white">
         <ExpandIcon />
-        Voltar para a transmissão
+        {previewTrack ? "Voltar para a transmissão" : "Voltar para a chamada"}
       </div>
     </div>,
     document.body
@@ -639,7 +678,7 @@ function VoiceStage({
 
     return (
       <div className="flex h-full w-full flex-col">
-        <div className="flex shrink-0 items-start gap-2 bg-black p-3 pr-16">
+        <div className="flex shrink-0 items-start gap-3 bg-black p-4 pr-16">
           <div className="flex shrink-0 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-md">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
             <span className="hidden text-[11px] font-bold uppercase tracking-widest text-white sm:inline">
@@ -648,14 +687,14 @@ function VoiceStage({
           </div>
 
           {orderedCameraTracks.length > 0 && (
-            <div className="cam-strip flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+            <div className="cam-strip flex min-w-0 flex-1 items-center gap-3 overflow-x-auto pb-1">
               {orderedCameraTracks.map((track) => {
                 const isLocal =
                   track.participant.identity === localParticipant.identity;
                 return (
                   <div
                     key={track.publication.trackSid}
-                    className={`relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-black shadow-lg sm:w-28 md:w-32 ${
+                    className={`relative aspect-video w-36 shrink-0 overflow-hidden rounded-lg bg-black shadow-lg sm:w-44 md:w-56 ${
                       isLocal
                         ? "ring-2 ring-gold/70"
                         : "ring-1 ring-white/15"
@@ -668,7 +707,7 @@ function VoiceStage({
                       }`}
                     />
                     <p
-                      className={`absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1.5 py-0.5 text-[9px] ${
+                      className={`absolute bottom-0 left-0 right-0 truncate bg-black/70 px-2 py-1 text-xs font-medium ${
                         isLocal ? "text-gold" : "text-white"
                       }`}
                     >
@@ -700,17 +739,35 @@ function VoiceStage({
 
   // Só webcams, sem ninguém compartilhando tela: os blocos ficam grandes,
   // num grid que se ajusta à quantidade de gente.
+  if (allCameraTracks.length === 1) {
+    const track = allCameraTracks[0];
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-black">
+        <VideoTrack
+          trackRef={track}
+          className={`h-full w-full object-cover ${
+            track.participant.identity === localParticipant.identity
+              ? "-scale-x-100"
+              : ""
+          }`}
+        />
+        <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 text-xs font-medium text-white">
+          {track.participant.name}
+        </p>
+
+        <HiddenSharesBar tracks={hiddenTracks} onResume={onResumeWatching} />
+      </div>
+    );
+  }
+
   if (allCameraTracks.length > 0) {
     return (
       <div className="flex h-full flex-col gap-3 overflow-y-auto bg-gradient-to-b from-black to-panel/40 p-4">
-        <div
-          className="grid flex-1 auto-rows-fr gap-3"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-        >
+        <div className="flex flex-1 flex-wrap content-center items-center justify-center gap-3">
           {allCameraTracks.map((track) => (
             <div
               key={track.publication.trackSid}
-              className="relative min-h-[160px] overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+              className="relative aspect-video h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
             >
               <VideoTrack
                 trackRef={track}
@@ -910,6 +967,7 @@ function VoiceControlBar({
   onReact,
   watchingCount,
   onStopWatchingAll,
+  floating = false,
 }: {
   volume: number;
   muted: boolean;
@@ -924,6 +982,7 @@ function VoiceControlBar({
   onReact: (emoji: string) => void;
   watchingCount: number;
   onStopWatchingAll: () => void;
+  floating?: boolean;
 }) {
   const { isCameraEnabled, isScreenShareEnabled, localParticipant } =
     useLocalParticipant();
@@ -951,7 +1010,23 @@ function VoiceControlBar({
           resolution: { ...RESOLUTIONS[resolution], frameRate: fps },
           contentHint: "motion",
         },
-        { videoCodec: "vp8", simulcast: false }
+        {
+          // H.264 usa o encoder de hardware do navegador/SO em vez de
+          // software (VP8) — é o que segura 1440p60 sem fritar a CPU de
+          // quem compartilha. backupCodec mantém VP8 como reserva pra
+          // quem não suportar H.264, sem custo extra pro publisher.
+          videoCodec: "h264",
+          backupCodec: true,
+          simulcast: false,
+          screenShareEncoding: {
+            maxBitrate: SCREEN_SHARE_BITRATE[resolution][fps],
+            maxFramerate: fps,
+          },
+          // Assistindo vídeo/filme junto, fluidez importa mais que nitidez
+          // pixel-perfect — se faltar banda, prefere manter os 60fps a
+          // manter a resolução exata.
+          degradationPreference: "maintain-framerate",
+        }
       );
       setShareMenuOpen(false);
     } catch {
@@ -971,7 +1046,13 @@ function VoiceControlBar({
   }
 
   return (
-    <div className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl bg-panel/90 px-2 py-2 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl sm:gap-1.5 sm:px-3">
+    <div
+      className={`mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl px-2 py-2 shadow-2xl ring-1 backdrop-blur-md sm:gap-1.5 sm:px-3 ${
+        floating
+          ? "bg-black/25 ring-white/10"
+          : "bg-panel/90 shadow-2xl ring-white/10 backdrop-blur-xl"
+      }`}
+    >
       <TrackToggle
         source={Track.Source.Camera}
         showIcon={false}
