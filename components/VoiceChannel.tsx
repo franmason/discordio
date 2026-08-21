@@ -234,6 +234,76 @@ const SCREEN_SHARE_BITRATE: Record<ResolutionKey, Record<FpsKey, number>> = {
   "1440p": { 30: 8_000_000, 60: 12_000_000 },
 };
 
+// Toda webcam aqui é tratada como 16:9 (padrão de longe mais comum em
+// webcam de notebook/USB nas resoluções que este app já usa). Blocos do
+// grid usam essa proporção EXATA — não corta a imagem (object-cover não
+// tem o que cortar quando o bloco já tem a forma certa) nem sobra tarja
+// preta (object-contain não é necessário pelo mesmo motivo).
+const CAMERA_ASPECT_RATIO = 16 / 9;
+const CAMERA_GRID_GAP = 12; // precisa bater com a classe `gap-3` usada no grid
+
+// Acha, entre 1..N colunas possíveis, a que resulta no MAIOR bloco que
+// ainda cabe inteiro no retângulo medido (largura E altura), mantendo a
+// proporção 16:9 — é o mesmo tipo de empacotamento "melhor encaixe" que
+// Zoom/Meet usam pra várias câmeras.
+function bestCameraTileLayout(
+  containerWidth: number,
+  containerHeight: number,
+  count: number
+): { tileWidth: number; tileHeight: number } {
+  if (count === 0 || containerWidth === 0 || containerHeight === 0) {
+    return { tileWidth: 0, tileHeight: 0 };
+  }
+
+  let best = { tileWidth: 0, tileHeight: 0 };
+
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const widthBudget = (containerWidth - CAMERA_GRID_GAP * (cols - 1)) / cols;
+    const heightBudget = (containerHeight - CAMERA_GRID_GAP * (rows - 1)) / rows;
+    if (widthBudget <= 0 || heightBudget <= 0) continue;
+
+    // O bloco cresce até bater em QUALQUER um dos dois limites (largura
+    // do container ou altura do container), o que vier primeiro —
+    // garante que nunca estoura pra nenhum dos dois lados.
+    let tileWidth = widthBudget;
+    let tileHeight = tileWidth / CAMERA_ASPECT_RATIO;
+    if (tileHeight > heightBudget) {
+      tileHeight = heightBudget;
+      tileWidth = tileHeight * CAMERA_ASPECT_RATIO;
+    }
+
+    if (tileWidth > best.tileWidth) {
+      best = { tileWidth, tileHeight };
+    }
+  }
+
+  return best;
+}
+
+// Mede o tamanho real (em pixels) de um elemento ao vivo, via
+// ResizeObserver. Usa callback ref (não useRef comum) porque o container
+// da grade de câmeras monta/desmonta conforme quantas pessoas estão
+// ligadas — um useRef parado não reagiria a essa troca de elemento.
+function useElementSize() {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+
+  return [setEl, size] as const;
+}
+
 function RoomHall({
   channelName,
   minimized,
@@ -383,7 +453,7 @@ function RoomHall({
             stageFullscreen ? "" : "rounded-2xl"
           }`}
         >
-          <div className="relative min-w-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             <VoiceStage
               channelName={channelName}
               controlsVisible={controlsVisible}
@@ -661,6 +731,7 @@ function VoiceStage({
 }) {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
+  const [cameraGridRef, cameraGridSize] = useElementSize();
 
   const allCameraTracks = useTracks([Track.Source.Camera]).filter(
     (t) => !t.publication.isMuted
@@ -748,18 +819,20 @@ function VoiceStage({
   if (allCameraTracks.length === 1) {
     const track = allCameraTracks[0];
     return (
-      <div className="relative h-full w-full overflow-hidden bg-black">
-        <VideoTrack
-          trackRef={track}
-          className={`h-full w-full object-cover ${
-            track.participant.identity === localParticipant.identity
-              ? "-scale-x-100"
-              : ""
-          }`}
-        />
-        <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 text-xs font-medium text-white">
-          {track.participant.name}
-        </p>
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
+        <div className="relative aspect-video h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10">
+          <VideoTrack
+            trackRef={track}
+            className={`h-full w-full object-cover ${
+              track.participant.identity === localParticipant.identity
+                ? "-scale-x-100"
+                : ""
+            }`}
+          />
+          <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 text-xs font-medium text-white">
+            {track.participant.name}
+          </p>
+        </div>
 
         <HiddenSharesBar tracks={hiddenTracks} onResume={onResumeWatching} />
       </div>
@@ -767,13 +840,32 @@ function VoiceStage({
   }
 
   if (allCameraTracks.length > 0) {
+    const { tileWidth, tileHeight } = bestCameraTileLayout(
+      cameraGridSize.width,
+      cameraGridSize.height,
+      allCameraTracks.length
+    );
     return (
-      <div className="flex h-full flex-col gap-3 overflow-y-auto bg-gradient-to-b from-black to-panel/40 p-4">
-        <div className="flex flex-1 flex-wrap content-center items-center justify-center gap-3">
+      <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto bg-gradient-to-b from-black to-panel/40 p-4">
+        {/* Tamanho do bloco calculado a partir da medida real do palco
+            (ResizeObserver), não de frações de grid — cada bloco já nasce
+            na proporção exata da webcam (16:9), então não corta a imagem
+            nem sobra tarja preta, e nunca ultrapassa a altura/largura
+            disponível. `min-h-0` evita o comportamento padrão do flex de
+            crescer pelo conteúdo em vez de respeitar o espaço disponível. */}
+        <div
+          ref={cameraGridRef}
+          className="flex min-h-0 flex-1 flex-wrap content-center items-center justify-center gap-3"
+        >
           {allCameraTracks.map((track) => (
             <div
               key={track.publication.trackSid}
-              className="relative aspect-video h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+              style={
+                tileWidth > 0
+                  ? { width: tileWidth, height: tileHeight }
+                  : undefined
+              }
+              className="relative shrink-0 overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
             >
               <VideoTrack
                 trackRef={track}
@@ -1312,6 +1404,12 @@ function AnchoredPopover({
 
   if (!pos) return null;
 
+  // Em fullscreen de verdade (Fullscreen API), só o que está dentro do
+  // elemento em fullscreen aparece na tela — um portal pra document.body
+  // renderiza no DOM mas fica invisível. Portaliza pro próprio elemento
+  // em fullscreen quando ele existir.
+  const portalTarget = document.fullscreenElement ?? document.body;
+
   return createPortal(
     <div
       ref={popoverRef}
@@ -1320,7 +1418,7 @@ function AnchoredPopover({
     >
       {children}
     </div>,
-    document.body
+    portalTarget
   );
 }
 
