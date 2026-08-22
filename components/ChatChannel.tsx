@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from "emoji-picker-react";
 import { supabase, Channel, Message, Profile } from "@/lib/supabase";
 import { Avatar } from "@/components/Sidebar";
 import MessageContent from "@/components/MessageContent";
@@ -28,6 +28,7 @@ export default function ChatChannel({
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
 
   // Carrega histórico + assina realtime pro canal atual
   useEffect(() => {
@@ -153,10 +154,26 @@ export default function ChatChannel({
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
+    await sendCurrentMessage();
+  }
+
+  async function sendCurrentMessage() {
     const content = text.trim();
     if (!content) return;
     setText("");
     await insertMessage(content);
+  }
+
+  // O seletor de emoji tem o próprio tratamento de teclado (navegação,
+  // busca) que pode interceptar o Enter antes dele "borbulhar" até o
+  // formulário. Tratando o Enter aqui, no próprio campo, e cortando a
+  // propagação, garante que enviar funciona mesmo com o seletor aberto.
+  function handleMessageInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setShowEmoji(false);
+    sendCurrentMessage();
   }
 
   async function uploadImage(file: File) {
@@ -207,6 +224,10 @@ export default function ChatChannel({
 
   function handleEmojiClick(data: EmojiClickData) {
     setText((prev) => prev + data.emoji);
+    // O seletor rouba o foco do teclado ao clicar num emoji — sem devolver
+    // pro campo de texto, apertar Enter depois não envia nada, porque o
+    // foco não está mais dentro do formulário da mensagem.
+    messageInputRef.current?.focus();
   }
 
   async function handleGifSelect(gifUrl: string) {
@@ -400,7 +421,7 @@ export default function ChatChannel({
             <EmojiPicker
               onEmojiClick={handleEmojiClick}
               theme={Theme.DARK}
-              lazyLoadEmojis
+              emojiStyle={EmojiStyle.NATIVE}
             />
           </div>
         )}
@@ -431,8 +452,10 @@ export default function ChatChannel({
           />
 
           <input
+            ref={messageInputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleMessageInputKeyDown}
             onPaste={handlePaste}
             placeholder={`Conversar em #${channel.name}`}
             className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-white outline-none placeholder:text-muted"
