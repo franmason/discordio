@@ -47,11 +47,13 @@ input:-webkit-autofill:focus {
   top: 0;
   bottom: 0;
   width: 52%;
+  /* Fixo em vermelho de propósito — accent virou branco/cinza no tema
+     monocromático, mas a cortina de cinema tem que continuar vermelha. */
   background: repeating-linear-gradient(
     90deg,
-    theme(colors.accentHover) 0px,
-    theme(colors.accent) 16px,
-    theme(colors.accentHover) 32px
+    #7f1d1d 0px,
+    #dc2626 16px,
+    #7f1d1d 32px
   );
 }
 
