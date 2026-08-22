@@ -167,7 +167,7 @@ function VoiceLobby({
         <div className="flex flex-wrap items-start justify-center gap-8">
           {participants.map((p) => (
             <div key={p.identity} className="flex w-24 flex-col items-center gap-2">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-white ring-2 ring-white/10">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-black ring-2 ring-white/10">
                 {p.avatarUrl ? (
                   <img
                     src={p.avatarUrl}
@@ -189,7 +189,7 @@ function VoiceLobby({
       <button
         type="button"
         onClick={onJoin}
-        className="flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-accentHover"
+        className="flex items-center gap-2 rounded-xl bg-online px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:brightness-110"
       >
         <EnterIcon />
         Entrar no canal de voz
@@ -466,41 +466,6 @@ function RoomHall({
 
             <ReactionsLayer reactions={reactions} />
 
-            {stageFullscreen && chatChannel && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!stageChatOpen) onStageChatOpen?.();
-                  setStageChatOpen((o) => !o);
-                }}
-                title={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
-                aria-label={stageChatOpen ? "Fechar bastidores" : "Abrir bastidores"}
-                className={`absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-sm transition-all duration-500 hover:bg-black/50 hover:text-white ${
-                  stageChatOpen ? "bg-gold/25 text-gold" : "bg-black/25 text-white/70"
-                } ${
-                  controlsVisible || stageChatOpen
-                    ? "opacity-100"
-                    : "pointer-events-none opacity-0"
-                }`}
-              >
-                <ChatBubbleIcon />
-              </button>
-            )}
-
-            {stageFullscreen && (
-              <button
-                type="button"
-                onClick={toggleStageFullscreen}
-                title="Sair da tela cheia (Esc)"
-                aria-label="Sair da tela cheia"
-                className={`absolute right-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/25 text-white/70 backdrop-blur-sm transition-all duration-500 hover:bg-black/50 hover:text-white ${
-                  controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
-                }`}
-              >
-                <FullscreenExitIcon />
-              </button>
-            )}
-
             {stageFullscreen && (
               <div
                 className={`absolute inset-x-0 bottom-0 z-20 flex justify-center pb-4 transition-opacity duration-500 ${
@@ -521,6 +486,12 @@ function RoomHall({
                   onReact={handleSendReaction}
                   watchingCount={screenShareTracks.length}
                   onStopWatchingAll={stopWatchingAll}
+                  chatChannel={chatChannel}
+                  chatOpen={stageChatOpen}
+                  onToggleChat={() => {
+                    if (!stageChatOpen) onStageChatOpen?.();
+                    setStageChatOpen((o) => !o);
+                  }}
                   floating
                 />
               </div>
@@ -698,8 +669,8 @@ function MiniStreamBubble({ onExpand }: { onExpand: () => void }) {
           </div>
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-        <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-accent">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+        <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-red-500">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
           Ao vivo
         </span>
       </div>
@@ -757,7 +728,7 @@ function VoiceStage({
       <div className="flex h-full w-full flex-col">
         <div className="flex shrink-0 items-start gap-3 bg-black p-4 pr-16">
           <div className="flex shrink-0 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-md">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
             <span className="hidden text-[11px] font-bold uppercase tracking-widest text-white sm:inline">
               Em exibição
             </span>
@@ -947,8 +918,8 @@ function HiddenSharesBar({
               className="pointer-events-none h-full w-full object-cover opacity-60 transition group-hover:opacity-80"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-accent">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-red-500">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
               Ao vivo
             </span>
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-white/80 opacity-0 transition group-hover:opacity-100">
@@ -1033,7 +1004,7 @@ function ParticipantAvatar({ participant }: { participant: Participant }) {
 
   return (
     <div className="flex w-24 flex-col items-center gap-2">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-white ring-2 ring-white/10">
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-bold text-black ring-2 ring-white/10">
         {avatarUrl ? (
           <img
             src={avatarUrl}
@@ -1065,6 +1036,9 @@ function VoiceControlBar({
   onReact,
   watchingCount,
   onStopWatchingAll,
+  chatChannel,
+  chatOpen = false,
+  onToggleChat,
   floating = false,
 }: {
   volume: number;
@@ -1080,6 +1054,9 @@ function VoiceControlBar({
   onReact: (emoji: string) => void;
   watchingCount: number;
   onStopWatchingAll: () => void;
+  chatChannel?: Channel | null;
+  chatOpen?: boolean;
+  onToggleChat?: () => void;
   floating?: boolean;
 }) {
   const { isCameraEnabled, isScreenShareEnabled, localParticipant } =
@@ -1163,12 +1140,17 @@ function VoiceControlBar({
         source={Track.Source.Camera}
         showIcon={false}
         title={isCameraEnabled ? "Desligar webcam" : "Ligar webcam"}
-        className={dockButtonClass(isCameraEnabled)}
-        style={
+        // O CSS padrão do LiveKit (.lk-button) empata em especificidade com
+        // nossas classes Tailwind em várias propriedades (fundo, borda
+        // arredondada, padding, gap) e, por ser importado depois do
+        // globals.css, vence o empate — desalinhando esse botão dos outros
+        // da hotbar, que são <button> puros sem esse CSS concorrente.
+        // !important força a nossa aparência a vencer em tudo que conflita.
+        className={`${dockButtonClass(isCameraEnabled)} !flex !gap-0.5 !rounded-xl !p-0 ${
           isCameraEnabled
-            ? { backgroundColor: "rgba(212,175,55,0.15)" }
-            : undefined
-        }
+            ? "!bg-gold/15 !text-gold !ring-gold/40 hover:!bg-gold/15"
+            : "!bg-white/5 !text-white !ring-white/10 hover:!bg-white/10"
+        }`}
       >
         <CameraIcon />
         <DockLabel>Webcam</DockLabel>
@@ -1235,7 +1217,7 @@ function VoiceControlBar({
             type="button"
             onClick={startScreenShare}
             disabled={starting}
-            className="w-full rounded bg-accent py-1.5 text-xs font-medium text-white transition hover:bg-accentHover disabled:opacity-60"
+            className="w-full rounded bg-accent py-1.5 text-xs font-medium text-black transition hover:bg-accentHover disabled:opacity-60"
           >
             {starting ? "Iniciando..." : "Iniciar compartilhamento"}
           </button>
@@ -1275,10 +1257,10 @@ function VoiceControlBar({
           title="Parar de assistir"
           aria-label="Parar de assistir"
           onClick={onStopWatchingAll}
-          className={dockButtonClass(false)}
+          className={`${dockButtonClass(false)} !w-auto !px-2.5`}
         >
           <StopWatchingIcon />
-          <DockLabel>Parar</DockLabel>
+          <DockLabel>Parar de assistir</DockLabel>
         </button>
       )}
 
@@ -1318,6 +1300,19 @@ function VoiceControlBar({
         </AnchoredPopover>
       )}
 
+      {chatChannel && onToggleChat && (
+        <button
+          type="button"
+          title={chatOpen ? "Fechar chat" : "Abrir chat"}
+          aria-label={chatOpen ? "Fechar chat" : "Abrir chat"}
+          onClick={onToggleChat}
+          className={dockButtonClass(chatOpen)}
+        >
+          <ChatBubbleIcon />
+          <DockLabel>Chat</DockLabel>
+        </button>
+      )}
+
       <button
         type="button"
         title={stageFullscreen ? "Sair da tela cheia" : "Tela cheia"}
@@ -1333,7 +1328,7 @@ function VoiceControlBar({
 
       <DisconnectButton
         title="Sair da sala"
-        className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-accent px-3 text-white transition hover:bg-accentHover sm:h-12 sm:px-4"
+        className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-red-600 px-3 text-white transition hover:bg-red-500 sm:h-12 sm:px-4"
       >
         <LeaveIcon />
         <DockLabel danger>Sair</DockLabel>
@@ -1423,10 +1418,10 @@ function AnchoredPopover({
 }
 
 function dockButtonClass(active: boolean) {
-  return `flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl transition sm:h-12 sm:w-16 ${
+  return `flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl ring-1 transition sm:h-12 sm:w-16 ${
     active
-      ? "bg-gold/15 text-gold ring-1 ring-gold/40"
-      : "text-muted hover:bg-white/5 hover:text-white"
+      ? "bg-gold/15 text-gold ring-gold/40"
+      : "bg-white/5 text-white ring-white/10 hover:bg-white/10"
   }`;
 }
 

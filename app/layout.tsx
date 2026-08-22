@@ -10,7 +10,7 @@ const displayFont = Bebas_Neue({
 });
 
 export const metadata: Metadata = {
-  title: "Sala",
+  title: "Chico Cine",
   description: "Chat e voz com a galera",
 };
 

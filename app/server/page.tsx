@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { getCurrentProfile, signOut } from "@/lib/session";
 import { supabase, Channel, Profile } from "@/lib/supabase";
 import { useVoiceParticipants } from "@/lib/useVoiceParticipants";
+import { usePresence } from "@/lib/usePresence";
 import Sidebar from "@/components/Sidebar";
 import CinemaHeader from "@/components/CinemaHeader";
 import ChatChannel from "@/components/ChatChannel";
 import VoiceChannel from "@/components/VoiceChannel";
 import ProfileSettingsModal from "@/components/ProfileSettingsModal";
 import CurtainIntro from "@/components/CurtainIntro";
+import MemberList from "@/components/MemberList";
 
 // Evita montar o ChatChannel duas vezes ao mesmo tempo (painel desktop +
 // bottom sheet mobile) — cada instância assina o mesmo canal realtime do
@@ -38,9 +40,11 @@ export default function ServerPage() {
   const [fullChatChannel, setFullChatChannel] = useState<Channel | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const isDesktop = useIsDesktop();
 
   const viewers = useVoiceParticipants(activeRoom?.id ?? null);
+  const onlineIds = usePresence(profile?.id);
 
   useEffect(() => {
     async function loadProfile() {
@@ -79,10 +83,16 @@ export default function ServerPage() {
       setChatChannel(null);
       return;
     }
-    const firstText = channels.find((c) => c.type === "text");
-    if (firstText) {
+    // Em uma sala de voz, "Bastidores" abre o chat daquela sala
+    // especificamente (room_id apontando pra ela), não o chat geral.
+    const roomChat = activeRoom
+      ? channels.find((c) => c.type === "text" && c.room_id === activeRoom.id)
+      : null;
+    const target =
+      roomChat ?? channels.find((c) => c.type === "text" && !c.room_id);
+    if (target) {
       setFullChatChannel(null);
-      setChatChannel(firstText);
+      setChatChannel(target);
     }
   }
 
@@ -116,11 +126,13 @@ export default function ServerPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         <CinemaHeader
           channel={activeRoom}
-          isLive={Boolean(activeRoom)}
+          isLive={viewers.some((v) => v.hasScreenShare)}
           viewerCount={viewers.length}
           onOpenRooms={() => setMobileNavOpen(true)}
           onToggleChat={toggleChat}
           chatOpen={Boolean(chatChannel || fullChatChannel)}
+          onToggleMembers={() => setMembersOpen((o) => !o)}
+          membersOpen={membersOpen}
         />
 
         <div className="relative flex min-h-0 flex-1">
@@ -133,7 +145,11 @@ export default function ServerPage() {
                 profile={profile}
                 minimized={Boolean(fullChatChannel)}
                 onExpand={() => setFullChatChannel(null)}
-                chatChannel={channels.find((c) => c.type === "text" && c.name === "geral") ?? null}
+                chatChannel={
+                  channels.find(
+                    (c) => c.type === "text" && c.room_id === activeRoom.id
+                  ) ?? null
+                }
                 onStageChatOpen={() => {
                   setChatChannel(null);
                   setFullChatChannel(null);
@@ -195,6 +211,13 @@ export default function ServerPage() {
           profile={profile}
           onClose={() => setEditingProfile(false)}
           onSaved={setProfile}
+        />
+      )}
+
+      {membersOpen && (
+        <MemberList
+          onlineIds={onlineIds}
+          onClose={() => setMembersOpen(false)}
         />
       )}
     </div>

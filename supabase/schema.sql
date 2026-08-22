@@ -50,6 +50,19 @@ insert into channels (name, type, position) values
   ('Sala de Voz 2', 'voice', 3)
 on conflict (name) do nothing;
 
+-- room_id liga um canal de TEXTO a uma sala de VOZ específica — é o que
+-- faz "Bastidores" abrir o chat certo dependendo de em qual sala de voz
+-- você está. NULL = chat geral, não amarrado a nenhuma sala.
+alter table channels add column if not exists room_id uuid references channels(id) on delete cascade;
+
+insert into channels (name, type, position, room_id)
+select 'Chat da Sala 1', 'text', 4, id from channels where name = 'Sala de Voz 1'
+on conflict (name) do nothing;
+
+insert into channels (name, type, position, room_id)
+select 'Chat da Sala 2', 'text', 5, id from channels where name = 'Sala de Voz 2'
+on conflict (name) do nothing;
+
 alter table profiles enable row level security;
 alter table channels enable row level security;
 alter table messages enable row level security;

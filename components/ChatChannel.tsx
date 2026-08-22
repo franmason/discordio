@@ -285,7 +285,7 @@ export default function ChatChannel({
       <div className="flex h-14 items-center gap-2 border-b border-white/5 px-4 shadow-sm md:h-16">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
-            Bastidores
+            Chat da Sala
           </p>
           <p className="truncate font-display text-lg uppercase tracking-wider text-white">
             {channel.name}

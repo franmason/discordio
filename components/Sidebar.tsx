@@ -24,7 +24,10 @@ export default function Sidebar({
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
-  const textChannels = channels.filter((c) => c.type === "text");
+  // Chats de sala (room_id preenchido) só se acessa entrando na sala e
+  // clicando em "Bastidores" ali — aqui na lista geral só aparece o chat
+  // que não é amarrado a nenhuma sala específica.
+  const textChannels = channels.filter((c) => c.type === "text" && !c.room_id);
   const voiceChannels = channels.filter((c) => c.type === "voice");
 
   const content = (
@@ -35,7 +38,7 @@ export default function Sidebar({
         </div>
         <div className="min-w-0 leading-tight">
           <p className="truncate font-display text-lg tracking-[0.15em] text-white">
-            CINE PRIVADO
+            CHICO CINE
           </p>
           <p className="truncate text-[10px] uppercase tracking-widest text-muted">
             Sessão entre amigos
@@ -58,7 +61,7 @@ export default function Sidebar({
 
         {textChannels.length > 0 && (
           <>
-            <SectionLabel>Bastidores</SectionLabel>
+            <SectionLabel>Chat da Sala</SectionLabel>
             <div className="flex flex-col gap-0.5">
               {textChannels.map((c) => (
                 <button
@@ -82,8 +85,13 @@ export default function Sidebar({
           className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-md px-2 py-1.5 text-left transition hover:bg-white/5"
         >
           <Avatar profile={profile} size={34} />
-          <span className="truncate text-sm font-medium text-white">
-            {profile.name}
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-sm font-medium text-white">
+              {profile.name}
+            </span>
+            <span className="block truncate text-[10px] text-white/40">
+              Editar perfil
+            </span>
           </span>
         </button>
         <button
@@ -167,9 +175,9 @@ function RoomCard({
           </p>
         </div>
         {streamer && (
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            Vivo
+            Ao vivo
           </span>
         )}
       </button>
@@ -181,7 +189,7 @@ function RoomCard({
               key={p.identity}
               className="flex items-center gap-2 rounded px-1 py-1 text-xs text-muted"
             >
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/80 text-[9px] font-bold text-white">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/80 text-[9px] font-bold text-black">
                 {p.avatarUrl ? (
                   <img
                     src={p.avatarUrl}
@@ -193,11 +201,18 @@ function RoomCard({
                 )}
               </div>
               <span className="truncate">{p.name}</span>
-              {p.hasScreenShare && (
-                <span className="ml-auto shrink-0 text-gold">
-                  <ScreenShareDotIcon />
-                </span>
-              )}
+              <span className="ml-auto flex shrink-0 items-center gap-1">
+                {p.hasCamera && (
+                  <span className="text-gold">
+                    <CameraDotIcon />
+                  </span>
+                )}
+                {p.hasScreenShare && (
+                  <span className="text-gold">
+                    <ScreenShareDotIcon />
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -224,7 +239,7 @@ export function Avatar({
   const initials = profile.name.slice(0, 2).toUpperCase();
   return (
     <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-bold text-white ring-1 ring-white/10"
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent font-bold text-black ring-1 ring-white/10"
       style={{ width: size, height: size, fontSize: size * 0.35 }}
     >
       {profile.avatar_url ? (
@@ -243,14 +258,9 @@ export function Avatar({
 function ReelIcon() {
   return (
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="12" cy="7" r="1.4" />
-      <circle cx="16.5" cy="9.7" r="1.4" />
-      <circle cx="16.5" cy="14.3" r="1.4" />
-      <circle cx="12" cy="17" r="1.4" />
-      <circle cx="7.5" cy="14.3" r="1.4" />
-      <circle cx="7.5" cy="9.7" r="1.4" />
+      <rect x="3" y="10" width="18" height="10" rx="1" />
+      <path d="M3 10l1-4 16 3-1 4z" />
+      <path d="M7.5 6.5l1 4M12.5 7.3l1 4M17.5 8.2l1 4" />
     </svg>
   );
 }
@@ -272,6 +282,15 @@ function SpeakerIcon() {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
       <path d="M18.36 5.64a9 9 0 0 1 0 12.72" />
+    </svg>
+  );
+}
+
+function CameraDotIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
     </svg>
   );
 }

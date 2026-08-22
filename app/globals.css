@@ -4,7 +4,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a2224 #1a1213;
+  scrollbar-color: #404040 #171717;
 }
 
 body {
@@ -21,10 +21,23 @@ body {
   display: none;
 }
 
+/* Autofill do Chrome/Edge força um fundo claro que ignora o background
+   escuro normal do input — a transição gigante é o truque padrão pra
+   evitar o "flash" claro antes do inset shadow escuro entrar em vigor. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0 1000px theme(colors.base) inset;
+  box-shadow: 0 0 0 1000px theme(colors.base) inset;
+  caret-color: #fff;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 .bg-base {
   background-image:
-    radial-gradient(ellipse 80% 55% at 50% -10%, rgba(179, 36, 44, 0.12), transparent 60%),
-    radial-gradient(ellipse 70% 60% at 100% 110%, rgba(212, 175, 55, 0.05), transparent 70%),
+    radial-gradient(ellipse 80% 55% at 50% -10%, rgba(255, 255, 255, 0.06), transparent 60%),
+    radial-gradient(ellipse 70% 60% at 100% 110%, rgba(255, 255, 255, 0.03), transparent 70%),
     radial-gradient(ellipse 90% 90% at 0% 100%, rgba(0, 0, 0, 0.5), transparent 70%);
   background-attachment: fixed;
 }
@@ -59,7 +72,7 @@ body {
 .curtain-glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 40% 60% at 50% 45%, rgba(212, 175, 55, 0.35), transparent 70%);
+  background: radial-gradient(ellipse 40% 60% at 50% 45%, rgba(255, 255, 255, 0.35), transparent 70%);
   opacity: 0;
   animation: curtain-glow-pulse 1.7s ease-out 0.3s forwards;
 }

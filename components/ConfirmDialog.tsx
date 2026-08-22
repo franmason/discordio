@@ -39,7 +39,7 @@ export default function ConfirmDialog({
               if (state.kind === "confirm") state.onConfirm();
               onClose();
             }}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accentHover"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-black hover:bg-accentHover"
           >
             {state.kind === "confirm" ? "Apagar" : "OK"}
           </button>
